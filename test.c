@@ -250,7 +250,7 @@ int test_next_response_is(int code,char *mynick,char *buffer,int *bytes)
   char serverid[*bytes];
   char thenick[*bytes];
   char themessage[*bytes];
-  int r=sscanf(buffer,":%[^ ] %*[0]%d %s %[^\n]%n",
+  int r=sscanf(buffer,":%[^ ] %*[0]%d %s %[^\n]%*[\n\r]%n",
 	       serverid,&thecode,thenick,themessage,&n);
   if (n>0&&(n<=(*bytes))) {
     bcopy(&buffer[n],&buffer[0],(*bytes)-n);
@@ -325,13 +325,13 @@ int test_servergreeting()
   if (bytes>=0&&bytes<8192) buffer[bytes]=0;
   // Check for initial server greeting
   test_next_response_is(20,"*",buffer,&bytes);
-  // check that there is nothing more in there
-  failif(bytes>0,
-	 "Extraneous server message(s)",
-	 "Server said nothing else before registration");
-  
-
-  
+  // check that there is nothing more in there    
+  if (failif(bytes>0,
+	     "Extraneous server message(s)",
+	     "Server said nothing else before registration")) {
+    printf("FAIL: There are %d extra bytes: '%s'\n",bytes,buffer);
+    return -1;
+  }
 
   return 0;
 }
