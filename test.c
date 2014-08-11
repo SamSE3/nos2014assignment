@@ -296,6 +296,11 @@ int failif(int failuretest,char *failmsg,char *successmsg)
   }
 }
 
+char *channel_names[]={"#deutsch","#koeln","#leipzig","#bonn"};
+char *greetings[]={"Hallo alle","Guten abend","Wie geht's alle?","moin",
+		   "Gibt es jemand hier?","Ich bin eine Kartoffel",
+		   "Pausenzeit","Kann mir jemand helfen mit meinem Auftragt?"};
+
 int test_servergreeting()
 {
   /* Test that student programme accepts 1,000 successive connections.
@@ -311,6 +316,7 @@ int test_servergreeting()
   char buffer[8192];
   int bytes=0;
   int r;
+  char cmd[8192];
 
   // Check for server response
   r=read_from_socket(sock,(unsigned char *)buffer,&bytes,sizeof(buffer));
@@ -332,6 +338,17 @@ int test_servergreeting()
     printf("FAIL: There are %d extra bytes: '%s'\n",bytes,buffer);
     return -1;
   }
+  // Confirm that we can't send JOIN or MSG before registering
+  sprintf(cmd,"JOIN %s\n\r",channel_names[getpid()&3]);
+  write(sock,cmd,strlen(cmd));
+  // expect a 241 complaint message
+  test_next_response_is(241,"*",buffer,&bytes);
+  sprintf(cmd,"PRIVMSG %s :%s\n\r",
+	  channel_names[getpid()&3],
+	  greetings[time(0)&7]);
+  write(sock,cmd,strlen(cmd));
+  // expect a 241 complaint message
+  test_next_response_is(241,"*",buffer,&bytes);
 
   return 0;
 }
