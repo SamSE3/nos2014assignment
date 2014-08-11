@@ -36,6 +36,14 @@
 #include <errno.h>
 #include <pthread.h>
 
+pthread_rwlock_t message_log_lock;
+
+struct client_thread {
+  pthread_t thread;
+  int thread_id;
+  int fd;
+};
+
 int create_listen_socket(int port)
 {
   int sock = socket(AF_INET,SOCK_STREAM,0);
@@ -77,12 +85,6 @@ int accept_incoming(int sock)
   return -1;
 }
 
-struct client_thread {
-  pthread_t thread;
-  int thread_id;
-  int fd;
-};
-
 void *client_connection(void *data)
 {
   struct client_thread *t=data;
@@ -100,6 +102,12 @@ int main(int argc,char **argv)
 
   int master_socket = create_listen_socket(atoi(argv[1]));
   int threads=0;
+
+  if (pthread_rwlock_init(&message_log_lock,NULL))
+    {
+      fprintf(stderr,"Failed to create rwlock for message log.\n");
+      exit(-1);
+    }
 
   while(1) {
     int client_sock = accept_incoming(master_socket);
