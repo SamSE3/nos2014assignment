@@ -85,9 +85,38 @@ int accept_incoming(int sock)
   return -1;
 }
 
+int read_from_socket(int sock,unsigned char *buffer,int *count,int buffer_size)
+{
+  int t=time(0);
+  if (*count>=buffer_size) return 0;
+  int r=read(sock,&buffer[*count],buffer_size-*count);
+  while(r!=0) {
+    if (r>0) {
+      (*count)+=r;
+      t=time(0);
+    }
+    r=read(sock,&buffer[*count],buffer_size-*count);
+    if (r==-1&&errno!=EAGAIN) {
+      perror("read() returned error. Stopping reading from socket.");
+      return -1;
+    }
+    // timeout after a few seconds of nothing
+    if (time(0)-t>3) break;
+  }
+  buffer[*count]=0;
+  return 0;
+}
+
+#define SERVER_GREETING ":irc.nos2014.net 020 * :Please register.\n"
 void *client_connection(void *data)
 {
+  int bytes=0;
+  char buffer[8192];
+
   struct client_thread *t=data;
+  int r=write(t->fd,SERVER_GREETING,strlen(SERVER_GREETING));
+  if (r<1) perror("write");
+  r=read_from_socket(t->fd,(unsigned char *)buffer,&bytes,sizeof(buffer));
   close(t->fd);
   pthread_exit(0);
 }
