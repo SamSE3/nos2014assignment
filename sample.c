@@ -88,7 +88,6 @@ int accept_incoming(int sock)
 void *client_connection(void *data)
 {
   struct client_thread *t=data;
-  printf("Client thread created.\n");
   close(t->fd);
   pthread_exit(0);
 }
@@ -101,7 +100,6 @@ int main(int argc,char **argv)
   }
 
   int master_socket = create_listen_socket(atoi(argv[1]));
-  int threads=0;
 
   if (pthread_rwlock_init(&message_log_lock,NULL))
     {
@@ -116,14 +114,12 @@ int main(int argc,char **argv)
       struct client_thread *t=calloc(sizeof(struct client_thread),1);
       if (t!=NULL) {
 	t->fd = client_sock;
-	printf("About to create a thread (#%d)\n",threads++);
 	if (pthread_create(&t->thread, NULL, client_connection, 
 			   (void*)t))
 	  {
 	    // Thread creation failed
 	    close(client_sock);
 	  }	
-	printf("Created a thread (or failed trying)\n");
       }
     }
   }
