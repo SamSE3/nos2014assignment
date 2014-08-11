@@ -42,6 +42,9 @@ struct client_thread {
   pthread_t thread;
   int thread_id;
   int fd;
+
+  int state;
+  time_t timeout;
 };
 
 int create_listen_socket(int port)
@@ -107,16 +110,33 @@ int read_from_socket(int sock,unsigned char *buffer,int *count,int buffer_size)
   return 0;
 }
 
+int parse_byte(struct client_thread *t, char c)
+{
+  // Parse next byte read on socket.
+  // If a complete line, then parse the line
+  return 0;
+}
+
 #define SERVER_GREETING ":irc.nos2014.net 020 * :Please register.\n"
 void *client_connection(void *data)
 {
+  int i;
   int bytes=0;
   char buffer[8192];
 
   struct client_thread *t=data;
+  t->state=0;
+  t->timeout=time(0)+5;
+
   int r=write(t->fd,SERVER_GREETING,strlen(SERVER_GREETING));
   if (r<1) perror("write");
-  r=read_from_socket(t->fd,(unsigned char *)buffer,&bytes,sizeof(buffer));
+  
+  // Main socket reading loop
+  while(1) {
+    bytes=read(t->fd,(unsigned char *)buffer,sizeof(buffer));
+    for(i=0;i<bytes;i++) parse_byte(t,buffer[i]);
+  }
+
   close(t->fd);
   pthread_exit(0);
 }
