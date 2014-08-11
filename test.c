@@ -314,7 +314,7 @@ int test_servergreeting()
 
   // Check for server response
   r=read_from_socket(sock,(unsigned char *)buffer,&bytes,sizeof(buffer));
-  if (r<1) {
+  if (r||(bytes<1)) {
     close(sock);
     printf("FAIL: No greeting received from server.\n");
     return -1;
@@ -324,7 +324,7 @@ int test_servergreeting()
   if (bytes>8191) bytes=8191;
   if (bytes>=0&&bytes<8192) buffer[bytes]=0;
   // Check for initial server greeting
-  test_next_response_is(001,"*",buffer,&bytes);
+  test_next_response_is(020,"*",buffer,&bytes);
   // check that there is nothing more in there
   failif(bytes>0,
 	 "Extraneous server message(s)",
