@@ -133,7 +133,7 @@ int read_from_socket(int sock,unsigned char *buffer,int *count,int buffer_size)
       return -1;
     }
     // timeout after a few seconds of nothing
-    if (time(0)-t>10) break;
+    if (time(0)-t>3) break;
   }
   buffer[*count]=0;
   return 0;
@@ -235,6 +235,108 @@ int test_acceptmultipleconnections()
   return 0;
 }
 
+int test_next_response_is(int code,char *mynick,char *buffer,int *bytes)
+{
+  if ((*bytes)<10) {
+    printf("FAIL: Too few bytes from server when looking for server message %03d\n",
+	   code);
+    return -1;
+  } else {
+    printf("SUCCESS: There are at least 10 bytes when looking for server message %03d\n",code);
+    success++;
+  }
+  int n=0;
+  int thecode;
+  char serverid[*bytes];
+  char thenick[*bytes];
+  char themessage[*bytes];
+  int r=sscanf(buffer,":%[^ ] %d %s %[^\n]%n",
+	       serverid,&thecode,thenick,themessage,&n);
+  if (n>0&&(n<=(*bytes))) {
+    bcopy(&buffer[n],&buffer[0],(*bytes)-n);
+    (*bytes) = (*bytes) - n;
+    printf("SUCCESS: Server message was a sensible length.\n");
+    success++;
+  } else {
+    printf("FAIL: Server message was not a sensible length.\n");
+    *bytes=0;
+    return -1;
+  }
+
+  if (r!=4) {
+    printf("FAIL: Could not parse server message\n");
+    return -1;
+  } else {
+    printf("SUCCESS: Could parse server message (saw code %03d)\n",thecode);
+  }
+  if (strcasecmp(mynick,thenick)) {
+    printf("FAIL: Server message contains wrong nick name (saw '%s' instead of '%s').\n",thenick,mynick);
+    return -1;
+  } else {
+    printf("SUCCESS: Server message contains correct nick name.\n");
+  }
+  if (code!=thecode) {
+    printf("FAIL: Server message contains wrong code (saw %03d instead of %03d).\n",
+	   thecode,code);
+    return -1;
+  } else {
+    printf("SUCCESS: Server message contains correct nick name.\n");
+  }
+  return 0;    
+}
+
+int failif(int failuretest,char *failmsg,char *successmsg)
+{
+  if (failuretest) {
+    printf("FAIL: %s\n",failmsg);
+    return -1;
+  } else {
+    printf("SUCCESS: %s\n",successmsg); success++;
+    return 0;
+  }
+}
+
+int test_servergreeting()
+{
+  /* Test that student programme accepts 1,000 successive connections.
+     Further test that it can do so within a minute. */
+  int sock=connect_to_port(student_port);
+  if (sock==-1) {
+    printf("FAIL: Could not connect to server\n");
+      return -1;
+  }
+  else
+    { printf("SUCCESS: Connected to server\n"); success++; }
+  
+  char buffer[8192];
+  int bytes=0;
+  int r;
+
+  // Check for server response
+  r=read_from_socket(sock,(unsigned char *)buffer,&bytes,sizeof(buffer));
+  if (r<1) {
+    close(sock);
+    printf("FAIL: No greeting received from server.\n");
+    return -1;
+  } else {
+    printf("SUCCESS: Server said something\n"); success++; 
+  } 
+  if (bytes>8191) bytes=8191;
+  if (bytes>=0&&bytes<8192) buffer[bytes]=0;
+  // Check for initial server greeting
+  test_next_response_is(001,"*",buffer,&bytes);
+  // check that there is nothing more in there
+  failif(bytes>0,
+	 "Extraneous server message(s)",
+	 "Server said nothing else before registration");
+  
+
+  
+
+  return 0;
+}
+
+
 int main(int argc,char **argv)
 {
   if (argc!=2) {
@@ -250,6 +352,7 @@ int main(int argc,char **argv)
 
   test_listensonport();
   test_acceptmultipleconnections();
+  test_servergreeting();
 
   int score=success*84/25;
   printf("Passed %d of 25 tests.\n"
