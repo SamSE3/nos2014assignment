@@ -257,8 +257,18 @@ int test_next_response_is(int code,char *mynick,char *buffer,int *bytes)
   char serverid[*bytes];
   char thenick[*bytes];
   char themessage[*bytes];
-  int r=sscanf(buffer,":%[^ ] %*[0]%d %s %[^\n]%*[\n\r]%n",
+  int r=sscanf(buffer,":%[^ ] %d %s %[^\n]%*[\n\r]%n",
 	       serverid,&thecode,thenick,themessage,&n);
+
+  if (r!=4) {
+    printf("FAIL: Could not parse server message (parsed %d out of %d fields)\n",
+	   r,4);
+    printf("      This is what the server sent me: '%s'\n",buffer);
+    return -1;
+  } else {
+    printf("SUCCESS: Could parse server message (saw code %03d)\n",thecode);
+  }
+
   if (n>0&&(n<=(*bytes))) {
     bcopy(&buffer[n],&buffer[0],(*bytes)-n);
     (*bytes) = (*bytes) - n;
@@ -271,13 +281,6 @@ int test_next_response_is(int code,char *mynick,char *buffer,int *bytes)
     return -1;
   }
 
-  if (r!=4) {
-    printf("FAIL: Could not parse server message (parsed %d out of %d fields)\n",
-	   r,4);
-    return -1;
-  } else {
-    printf("SUCCESS: Could parse server message (saw code %03d)\n",thecode);
-  }
   if (strcasecmp(mynick,thenick)) {
     printf("FAIL: Server message contains wrong nick name (saw '%s' instead of '%s').\n",thenick,mynick);
     return -1;
