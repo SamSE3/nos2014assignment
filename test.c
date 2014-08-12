@@ -120,6 +120,9 @@ int connect_to_port(int port)
 int read_from_socket(int sock,unsigned char *buffer,int *count,int buffer_size,
 		     int timeout)
 {
+  fcntl(sock,F_SETFL,fcntl(sock, F_GETFL, NULL)|O_NONBLOCK);
+
+
   int t=time(0)+timeout;
   if (*count>=buffer_size) return 0;
   int r=read(sock,&buffer[*count],buffer_size-*count);
@@ -131,7 +134,7 @@ int read_from_socket(int sock,unsigned char *buffer,int *count,int buffer_size,
     if (r==-1&&errno!=EAGAIN) {
       perror("read() returned error. Stopping reading from socket.");
       return -1;
-    }
+    } else usleep(100000);
     // timeout after a few seconds of nothing
     if (time(0)>=t) break;
   }
@@ -214,6 +217,7 @@ int test_acceptmultipleconnections()
       printf("FAIL: Accepting multiple connections on a TCP port (failed on attempt %d).\n",i);
       return -1;
     }
+    write(sock,"QUIT\n",5);
     close(sock);
     printf("\rMade %d/1000 connections",i); fflush(stdout);
     // allow upto 5 minutes to handle the 1,000 connections.
@@ -240,8 +244,9 @@ int test_acceptmultipleconnections()
 int test_next_response_is(int code,char *mynick,char *buffer,int *bytes)
 {
   if ((*bytes)<10) {
-    printf("FAIL: Too few bytes from server when looking for server message %03d\n",
-	   code);
+    printf("FAIL: Too few bytes from server (%d) when looking for"
+	   " server message %03d\n",
+	   *bytes,code);
     return -1;
   } else {
     printf("SUCCESS: There are at least 10 bytes when looking for server message %03d\n",code);
@@ -290,8 +295,8 @@ int test_next_response_is(int code,char *mynick,char *buffer,int *bytes)
 int test_next_response_is_error(char *message,char *buffer,int *bytes)
 {
   if ((*bytes)<10) {
-    printf("FAIL: Too few bytes from server when looking for server error '%s'\n",
-	   message);
+    printf("FAIL: Too few bytes from server (%d) when looking for server error '%s'\n",
+	   *bytes,message);
     return -1;
   } else {
     printf("SUCCESS: There are at least 10 bytes when looking for server error '%s'\n",message);
@@ -399,11 +404,12 @@ int test_servergreeting()
   }
   else
     { printf("SUCCESS: Connected to server\n"); success++; }
+  r=read_from_socket(sock,(unsigned char *)buffer,&bytes,sizeof(buffer),2);
+  test_next_response_is(20,"*",buffer,&bytes);
   
   // Confirm that we can't send JOIN or MSG before registering
   sprintf(cmd,"JOIN %s\n\r",channel_names[getpid()&3]);
   int w=write(sock,cmd,strlen(cmd));
-  printf("wrote %d bytes\n",w);
   // expect a 241 complaint message
   r=read_from_socket(sock,(unsigned char *)buffer,&bytes,sizeof(buffer),2);
   test_next_response_is(241,"*",buffer,&bytes);
@@ -411,7 +417,6 @@ int test_servergreeting()
 	  channel_names[getpid()&3],
 	  greetings[time(0)&7]);
   w=write(sock,cmd,strlen(cmd));
-  printf("wrote %d bytes\n",w);
   // expect a 241 complaint message
   r=read_from_socket(sock,(unsigned char *)buffer,&bytes,sizeof(buffer),2);
   test_next_response_is(241,"*",buffer,&bytes);
