@@ -340,15 +340,28 @@ int test_servergreeting()
     printf("FAIL: There are %d extra bytes: '%s'\n",bytes,buffer);
     return -1;
   }
+
+  // connections should have timed out, so get a fresh one
+  close(sock);
+  sock=connect_to_port(student_port);
+  if (sock==-1) {
+    printf("FAIL: Could not connect to server\n");
+    return -1;
+  }
+  else
+    { printf("SUCCESS: Connected to server\n"); success++; }
+  
   // Confirm that we can't send JOIN or MSG before registering
   sprintf(cmd,"JOIN %s\n\r",channel_names[getpid()&3]);
-  write(sock,cmd,strlen(cmd));
+  int w=write(sock,cmd,strlen(cmd));
+  printf("wrote %d bytes\n",w);
   // expect a 241 complaint message
   test_next_response_is(241,"*",buffer,&bytes);
   sprintf(cmd,"PRIVMSG %s :%s\n\r",
 	  channel_names[getpid()&3],
 	  greetings[time(0)&7]);
-  write(sock,cmd,strlen(cmd));
+  w=write(sock,cmd,strlen(cmd));
+  printf("wrote %d bytes\n",w);
   // expect a 241 complaint message
   test_next_response_is(241,"*",buffer,&bytes);
 
