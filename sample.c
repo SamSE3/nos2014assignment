@@ -46,10 +46,13 @@ struct client_thread {
   int thread_id;
   int fd;
 
+  char nickname[32];
+
   int state;
   time_t timeout;
 
-  char nickname[32];
+  char line[1024];
+  int line_len;
 };
 
 int create_listen_socket(int port)
@@ -93,28 +96,6 @@ int accept_incoming(int sock)
   return -1;
 }
 
-int read_from_socket(int sock,unsigned char *buffer,int *count,int buffer_size)
-{
-  int t=time(0);
-  if (*count>=buffer_size) return 0;
-  int r=read(sock,&buffer[*count],buffer_size-*count);
-  while(r!=0) {
-    if (r>0) {
-      (*count)+=r;
-      t=time(0);
-    }
-    r=read(sock,&buffer[*count],buffer_size-*count);    
-    if (r==-1&&errno!=EAGAIN) {
-      perror("read() returned error. Stopping reading from socket.");
-      return -1;
-    }
-    // timeout after a few seconds of nothing
-    if (time(0)-t>3) break;
-  }
-  buffer[*count]=0;
-  return 0;
-}
-
 int server_reply(struct client_thread *t,int n,char *m)
 {
   char msg[1024];
@@ -134,9 +115,6 @@ int user_not_registered(struct client_thread *t)
   return 0;
 }
 
-char line[1024];
-int line_len=0;
-
 int process_line(struct client_thread *t,char *line)
 {
   char thecommand[1024]="";
@@ -144,39 +122,40 @@ int process_line(struct client_thread *t,char *line)
   char therest[1024]="";
   char msg[1024];
 
-  fprintf(stderr,"Processing line: '%s'\n",line);
-
   // Accept "CMD :stuff" and "CMD thing :stuff"
   if ((sscanf(line,"%[^ ] :%[^\n]",thecommand,thefirstarg)>0)
       ||(sscanf(line,"%[^ ] %[^ ] :%[^\n]",thecommand,thefirstarg,therest)>0))
     {
       // got something that looks like a command
-      if (strcasecmp(thecommand,"JOIN")) {
+      if (!strcasecmp(thecommand,"JOIN")) {
 	if (!t->state) return user_not_registered(t);
 	// join channel named in thefirstarg
       }
-      else if (strcasecmp(thecommand,"PRIVMSG")) {
+      else if (!strcasecmp(thecommand,"PRIVMSG")) {
 	if (!t->state) return user_not_registered(t);
 	// join send private message to party named in thefirstarg
       }
-      else if (strcasecmp(thecommand,"QUIT")) {
+      else if (!strcasecmp(thecommand,"QUIT")) {
 	// Quit, leaving optional quit message
 	if (!thefirstarg[0]) strcpy(thefirstarg,"Goodbye");
 	snprintf(msg,1024,"ERROR :Closing link %s (%s).\n",
 		 t->nickname,thefirstarg);
 	// XXX should submit quit message to shared log
 	write(t->fd,msg,strlen(msg));
+	close(t->fd);
+	fflush(stderr);
 	pthread_exit(0);
       }
       else {
 	// unknown command
+	//	fprintf(stderr,"Saw unknown command '%s'\n",thecommand);
 	server_reply(t,299,"Unknown command.");
-      }
-      
+      }      
     }
   else
     {
       // got some rubbish
+      fprintf(stderr,"Could not parse line\n");
     }
 
   return 0;
@@ -187,14 +166,14 @@ int parse_byte(struct client_thread *t, char c)
   // Parse next byte read on socket.
   // If a complete line, then parse the line
   if (c=='\n'||c=='\r') {
-    if (line_len<0) line_len=0;
-    if (line_len>1023) line_len=1023;
-    line[line_len]=0;
-    if (line_len>0) process_line(t,line);
-    line_len=0;
+    if (t->line_len<0) t->line_len=0;
+    if (t->line_len>1023) t->line_len=1023;
+    t->line[t->line_len]=0;
+    if (t->line_len>0) process_line(t,t->line);
+    t->line_len=0;
   } else {
-    if (line_len<1024) 
-      line[line_len++]=c;
+    if (t->line_len<1024) 
+      t->line[t->line_len++]=c;
   }
   return 0;
 }
@@ -219,6 +198,7 @@ void *client_connection(void *data)
   while(1) {
     bytes=read(t->fd,(unsigned char *)buffer,sizeof(buffer));
     if (bytes>0) {
+      fprintf(stderr,"Read %d bytes on fd %d\n",bytes,t->fd);
       t->timeout=time(0)+5;
       if (t->state) t->timeout+=55; // 60 second timeout once registered
       for(i=0;i<bytes;i++) parse_byte(t,buffer[i]);
