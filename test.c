@@ -265,13 +265,15 @@ int test_next_response_is(int code,char *mynick,char *buffer,int *bytes)
     printf("SUCCESS: Server message was a sensible length.\n");
     success++;
   } else {
-    printf("FAIL: Server message was not a sensible length.\n");
+    printf("FAIL: Server message was not a sensible length (length was %d).\n",n);
+    printf("      This is what the server sent me: '%s'\n",buffer);
     *bytes=0;
     return -1;
   }
 
   if (r!=4) {
-    printf("FAIL: Could not parse server message\n");
+    printf("FAIL: Could not parse server message (parsed %d out of %d fields)\n",
+	   r,4);
     return -1;
   } else {
     printf("SUCCESS: Could parse server message (saw code %03d)\n",thecode);
@@ -312,13 +314,15 @@ int test_next_response_is_error(char *message,char *buffer,int *bytes)
     printf("SUCCESS: Server ERROR message was a sensible length.\n");
     success++;
   } else {
-    printf("FAIL: Server message was not a sensible length.\n");
+    printf("FAIL: Server ERROR message was not a sensible length (length was %d).\n",n);
+    printf("      This is what the server sent me: '%s'\n",buffer);
+    printf("      Don't forget errors like like 'ERROR :foo: bar (quux)'\n");
     *bytes=0;
     return -1;
   }
 
-  if (r!=2) {
-    printf("FAIL: Could not parse server error message\n");
+  if (r!=1) {
+    printf("FAIL: Could not parse server error message (parsed %d out of %d fields)\n",r,1);
     return -1;
   } else {
     printf("SUCCESS: Saw correct server error (saw '%s')\n",themessage);
