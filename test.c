@@ -205,7 +205,7 @@ int test_acceptmultipleconnections()
      Further test that it can do so within a minute. */
   int start_time=time(0);
   int i;
-  for(i=0;i<1000;i++) {
+  for(i=0;i<=1000;i++) {
     int sock=connect_to_port(student_port);
     // Be merciful with student programs that are too slow to take 1,000 connections
     // coming in really fast.
@@ -217,7 +217,7 @@ int test_acceptmultipleconnections()
       printf("FAIL: Accepting multiple connections on a TCP port (failed on attempt %d).\n",i);
       return -1;
     }
-    write(sock,"QUIT\n",5);
+    write(sock,"QUIT\n\r",6);
     close(sock);
     printf("\rMade %d/1000 connections",i); fflush(stdout);
     // allow upto 5 minutes to handle the 1,000 connections.
@@ -227,7 +227,7 @@ int test_acceptmultipleconnections()
   
   int end_time=time(0);
   
-  if (i==1000)
+  if (i==1000+1)
     { printf("SUCCESS: Accepting multiple connections on a TCP port\n"); success++; }
   else
     printf("FAIL: Accepting multiple connections on a TCP port. Did not complete 1,000 connections in less than 5 minutes.\n");
