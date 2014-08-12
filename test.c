@@ -208,13 +208,14 @@ int test_acceptmultipleconnections()
     // coming in really fast.
     if (sock==-1) {
       if (i<10) usleep(100000); else usleep(1000);
-      sock=connect_to_port(student_port);
+      sock=connect_to_port(student_port);      
     }
     if (sock==-1) {
       printf("FAIL: Accepting multiple connections on a TCP port (failed on attempt %d).\n",i);
       return -1;
     }
     close(sock);
+    printf("\rMade %d/1000 connections",i); fflush(stdout);
     // allow upto 5 minutes to handle the 1,000 connections.
     if (time(0)-start_time>300) break;
   }
@@ -361,7 +362,13 @@ int main(int argc,char **argv)
     exit(-1);
   }
 
-  launch_student_programme(argv[1]);
+  if (atoi(argv[1])==0)
+    launch_student_programme(argv[1]);
+  else {
+    student_port=atoi(argv[1]);
+    student_pid=99999;
+  }
+
   if (student_pid<0) {
     perror("Failed to launch student programme.");
     return -1;
