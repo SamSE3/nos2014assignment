@@ -115,6 +115,15 @@ int read_from_socket(int sock,unsigned char *buffer,int *count,int buffer_size)
   return 0;
 }
 
+int server_reply(struct client_thread *t,int n,char *m)
+{
+  char msg[1024];
+  snprintf(msg,1024,":irc.nos2014.net %d %s :%s\n",
+	   n,t->nickname,m);
+  write(t->fd,msg,strlen(msg));
+  return 0;
+}
+
 int user_not_registered(struct client_thread *t)
 {
   char msg[1024];
@@ -134,6 +143,8 @@ int process_line(struct client_thread *t,char *line)
   char thefirstarg[1024]="";
   char therest[1024]="";
   char msg[1024];
+
+  fprintf(stderr,"Processing line: '%s'\n",line);
 
   // Accept "CMD :stuff" and "CMD thing :stuff"
   if ((sscanf(line,"%[^ ] :%[^\n]",thecommand,thefirstarg)>0)
@@ -156,6 +167,10 @@ int process_line(struct client_thread *t,char *line)
 	// XXX should submit quit message to shared log
 	write(t->fd,msg,strlen(msg));
 	pthread_exit(0);
+      }
+      else {
+	// unknown command
+	server_reply(t,299,"Unknown command.");
       }
       
     }
