@@ -198,7 +198,7 @@ void *client_connection(void *data)
   while(1) {
     bytes=read(t->fd,(unsigned char *)buffer,sizeof(buffer));
     if (bytes>0) {
-      fprintf(stderr,"Read %d bytes on fd %d\n",bytes,t->fd);
+      //      fprintf(stderr,"Read %d bytes on fd %d\n",bytes,t->fd);
       t->timeout=time(0)+5;
       if (t->state) t->timeout+=55; // 60 second timeout once registered
       for(i=0;i<bytes;i++) parse_byte(t,buffer[i]);
