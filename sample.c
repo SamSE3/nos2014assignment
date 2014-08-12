@@ -37,7 +37,7 @@
 #include <pthread.h>
 
 #define SERVER_GREETING ":irc.nos2014.net 020 * :Please register.\n"
-#define TIMEOUT_MESSAGE "ERROR :Closing link %s (Timeout).\n"
+#define TIMEOUT_MESSAGE "ERROR :Closing link: %s (Timeout).\n"
 
 pthread_rwlock_t message_log_lock;
 
