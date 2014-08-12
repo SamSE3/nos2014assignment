@@ -36,6 +36,9 @@
 #include <errno.h>
 #include <pthread.h>
 
+#define SERVER_GREETING ":irc.nos2014.net 020 * :Please register.\n"
+#define TIMEOUT_MESSAGE "ERROR :Closing link %s (Timeout).\n"
+
 pthread_rwlock_t message_log_lock;
 
 struct client_thread {
@@ -98,7 +101,7 @@ int read_from_socket(int sock,unsigned char *buffer,int *count,int buffer_size)
       (*count)+=r;
       t=time(0);
     }
-    r=read(sock,&buffer[*count],buffer_size-*count);
+    r=read(sock,&buffer[*count],buffer_size-*count);    
     if (r==-1&&errno!=EAGAIN) {
       perror("read() returned error. Stopping reading from socket.");
       return -1;
@@ -117,24 +120,33 @@ int parse_byte(struct client_thread *t, char c)
   return 0;
 }
 
-#define SERVER_GREETING ":irc.nos2014.net 020 * :Please register.\n"
 void *client_connection(void *data)
 {
   int i;
   int bytes=0;
   char buffer[8192];
-
+  
   struct client_thread *t=data;
   t->state=0;
   t->timeout=time(0)+5;
-
+  
   int r=write(t->fd,SERVER_GREETING,strlen(SERVER_GREETING));
   if (r<1) perror("write");
   
   // Main socket reading loop
   while(1) {
     bytes=read(t->fd,(unsigned char *)buffer,sizeof(buffer));
-    for(i=0;i<bytes;i++) parse_byte(t,buffer[i]);
+    if (bytes>-1) {
+   t->timeout=time(0)+5;
+   if (t->state) t->timeout+=55; // 60 second timeout once registered
+   for(i=0;i<bytes;i++) parse_byte(t,buffer[i]);
+    } else {      
+      // close connection on timeout
+      if (time(0)>=t->timeout) {
+	write(t->fd,TIMEOUT_MESSAGE,strlen(TIMEOUT_MESSAGE));
+	break;      
+      }
+    }
   }
 
   close(t->fd);
@@ -143,34 +155,34 @@ void *client_connection(void *data)
 
 int main(int argc,char **argv)
 {
-  if (argc!=2) {
-    fprintf(stderr,"usage: sample <tcp port>\n");
-    exit(-1);
-  }
+if (argc!=2) {
+fprintf(stderr,"usage: sample <tcp port>\n");
+exit(-1);
+}
 
-  int master_socket = create_listen_socket(atoi(argv[1]));
+int master_socket = create_listen_socket(atoi(argv[1]));
 
-  if (pthread_rwlock_init(&message_log_lock,NULL))
-    {
-      fprintf(stderr,"Failed to create rwlock for message log.\n");
-      exit(-1);
-    }
+if (pthread_rwlock_init(&message_log_lock,NULL))
+  {
+fprintf(stderr,"Failed to create rwlock for message log.\n");
+exit(-1);
+}
 
-  while(1) {
-    int client_sock = accept_incoming(master_socket);
-    if (client_sock!=-1) {
-      // Got connection -- do something with it.
-      struct client_thread *t=calloc(sizeof(struct client_thread),1);
-      if (t!=NULL) {
-	t->fd = client_sock;
-	if (pthread_create(&t->thread, NULL, client_connection, 
-			   (void*)t))
-	  {
-	    // Thread creation failed
-	    close(client_sock);
-	  }	
-      }
-    }
-  }
+while(1) {
+int client_sock = accept_incoming(master_socket);
+if (client_sock!=-1) {
+// Got connection -- do something with it.
+struct client_thread *t=calloc(sizeof(struct client_thread),1);
+if (t!=NULL) {
+t->fd = client_sock;
+if (pthread_create(&t->thread, NULL, client_connection, 
+		     (void*)t))
+  {
+// Thread creation failed
+close(client_sock);
+}	
+}
+}
+}
 
 }
