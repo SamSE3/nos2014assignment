@@ -117,15 +117,15 @@ int connect_to_port(int port)
   return sock;
 }
 
-int read_from_socket(int sock,unsigned char *buffer,int *count,int buffer_size)
+int read_from_socket(int sock,unsigned char *buffer,int *count,int buffer_size,
+		     int timeout)
 {
-  int t=time(0);
+  int t=time(0)+timeout;
   if (*count>=buffer_size) return 0;
   int r=read(sock,&buffer[*count],buffer_size-*count);
   while(r!=0) {
     if (r>0) {
       (*count)+=r;
-      t=time(0);
     }
     r=read(sock,&buffer[*count],buffer_size-*count);
     if (r==-1&&errno!=EAGAIN) {
@@ -133,7 +133,7 @@ int read_from_socket(int sock,unsigned char *buffer,int *count,int buffer_size)
       return -1;
     }
     // timeout after a few seconds of nothing
-    if (time(0)-t>3) break;
+    if (time(0)>=t) break;
   }
   buffer[*count]=0;
   return 0;
@@ -287,6 +287,47 @@ int test_next_response_is(int code,char *mynick,char *buffer,int *bytes)
   return 0;    
 }
 
+int test_next_response_is_error(char *message,char *buffer,int *bytes)
+{
+  if ((*bytes)<10) {
+    printf("FAIL: Too few bytes from server when looking for server message %03d\n",
+	   code);
+    return -1;
+  } else {
+    printf("SUCCESS: There are at least 10 bytes when looking for server message %03d\n",code);
+    success++;
+  }
+  int n=0;
+  char themessage[*bytes];
+  int r=sscanf(buffer,"ERROR :%[^:]: %*[^\n]%*[\n\r]%n",
+	       themessage,&n);
+  if (n>0&&(n<=(*bytes))) {
+    bcopy(&buffer[n],&buffer[0],(*bytes)-n);
+    (*bytes) = (*bytes) - n;
+    printf("SUCCESS: Server ERROR message was a sensible length.\n");
+    success++;
+  } else {
+    printf("FAIL: Server message was not a sensible length.\n");
+    *bytes=0;
+    return -1;
+  }
+
+  if (r!=2) {
+    printf("FAIL: Could not parse server error message\n");
+    return -1;
+  } else {
+    printf("SUCCESS: Saw correct server error (saw '%s')\n",themessage);
+  }
+  if (strcasecmp(message,themessage)) {
+    printf("FAIL: Server error contains wrong message (saw '%s' instead of '%s').\n",themessage,message);
+    return -1;
+  } else {
+    printf("SUCCESS: Server error contains correct message.\n");
+  }
+  return 0;    
+}
+
+
 int failif(int failuretest,char *failmsg,char *successmsg)
 {
   if (failuretest) {
@@ -321,7 +362,7 @@ int test_servergreeting()
   char cmd[8192];
 
   // Check for server response
-  r=read_from_socket(sock,(unsigned char *)buffer,&bytes,sizeof(buffer));
+  r=read_from_socket(sock,(unsigned char *)buffer,&bytes,sizeof(buffer),2);
   if (r||(bytes<1)) {
     close(sock);
     printf("FAIL: No greeting received from server.\n");
@@ -336,6 +377,14 @@ int test_servergreeting()
   // check that there is nothing more in there    
   if (failif(bytes>0,
 	     "Extraneous server message(s)",
+	     "Server said nothing else before registration")) {
+    printf("FAIL: There are %d extra bytes: '%s'\n",bytes,buffer);
+    return -1;
+  }
+  r=read_from_socket(sock,(unsigned char *)buffer,&bytes,sizeof(buffer),5);
+  test_next_response_is_error("Closing Link",buffer,&bytes);
+  if (failif(bytes>0,
+	     "Extraneous server message(s) after timeout ERROR message",
 	     "Server said nothing else before registration")) {
     printf("FAIL: There are %d extra bytes: '%s'\n",bytes,buffer);
     return -1;
