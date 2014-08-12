@@ -113,10 +113,28 @@ int read_from_socket(int sock,unsigned char *buffer,int *count,int buffer_size)
   return 0;
 }
 
+char line[1024];
+int line_len=0;
+
+int process_line(struct client_thread *t,char *line)
+{
+  return 0;
+}
+
 int parse_byte(struct client_thread *t, char c)
 {
   // Parse next byte read on socket.
   // If a complete line, then parse the line
+  if (c=='\n'||c=='\r') {
+    if (line_len<0) line_len=0;
+    if (line_len>1023) line_len=1023;
+    line[line_len]=0;
+    process_line(t,line);
+    line_len=0;
+  } else {
+    if (line_len<1024) 
+      line[line_len++]=c;
+  }
   return 0;
 }
 
