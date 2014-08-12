@@ -48,6 +48,8 @@ struct client_thread {
 
   int state;
   time_t timeout;
+
+  char nickname[32];
 };
 
 int create_listen_socket(int port)
@@ -113,11 +115,55 @@ int read_from_socket(int sock,unsigned char *buffer,int *count,int buffer_size)
   return 0;
 }
 
+int user_not_registered(struct client_thread *t)
+{
+  char msg[1024];
+  snprintf(msg,1024,":irc.nos2014.net 241 %s :You must register with USER before using this command.\n",
+	   t->nickname);
+  // XXX should submit quit message to shared log
+  write(t->fd,msg,strlen(msg));
+  return 0;
+}
+
 char line[1024];
 int line_len=0;
 
 int process_line(struct client_thread *t,char *line)
 {
+  char thecommand[1024]="";
+  char thefirstarg[1024]="";
+  char therest[1024]="";
+  char msg[1024];
+
+  // Accept "CMD :stuff" and "CMD thing :stuff"
+  if ((sscanf(line,"%[^ ] :%[^\n]",thecommand,thefirstarg)>0)
+      ||(sscanf(line,"%[^ ] %[^ ] :%[^\n]",thecommand,thefirstarg,therest)>0))
+    {
+      // got something that looks like a command
+      if (strcasecmp(thecommand,"JOIN")) {
+	if (!t->state) return user_not_registered(t);
+	// join channel named in thefirstarg
+      }
+      else if (strcasecmp(thecommand,"PRIVMSG")) {
+	if (!t->state) return user_not_registered(t);
+	// join send private message to party named in thefirstarg
+      }
+      else if (strcasecmp(thecommand,"QUIT")) {
+	// Quit, leaving optional quit message
+	if (!thefirstarg[0]) strcpy(thefirstarg,"Goodbye");
+	snprintf(msg,1024,"ERROR :Closing link %s (%s).\n",
+		 t->nickname,thefirstarg);
+	// XXX should submit quit message to shared log
+	write(t->fd,msg,strlen(msg));
+	pthread_exit(0);
+      }
+      
+    }
+  else
+    {
+      // got some rubbish
+    }
+
   return 0;
 }
 
@@ -129,7 +175,7 @@ int parse_byte(struct client_thread *t, char c)
     if (line_len<0) line_len=0;
     if (line_len>1023) line_len=1023;
     line[line_len]=0;
-    process_line(t,line);
+    if (line_len>0) process_line(t,line);
     line_len=0;
   } else {
     if (line_len<1024) 
@@ -147,6 +193,7 @@ void *client_connection(void *data)
   struct client_thread *t=data;
   t->state=0;
   t->timeout=time(0)+5;
+  strcpy(t->nickname,"*");
   
   fcntl(t->fd,F_SETFL,fcntl(t->fd, F_GETFL, NULL)|O_NONBLOCK);
 
