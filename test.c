@@ -386,7 +386,7 @@ int main(int argc,char **argv)
 	 "Therefore your grade for this assignment will be in the range %02d%% -- %02d%% (%s -- %s)\n",
 	 success,score,score,score+16,gradeOf(score),gradeOf(score+15));
 
-  if (student_pid>100) {
+  if (student_pid>100&&student_pid!=99999) {
     fprintf(stderr,"About to kill student process %d\n",(int)student_pid);
     int r=kill(student_pid,SIGKILL);
     fprintf(stderr,"Seeing how that went.\n");
