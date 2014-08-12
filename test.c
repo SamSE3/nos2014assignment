@@ -290,11 +290,11 @@ int test_next_response_is(int code,char *mynick,char *buffer,int *bytes)
 int test_next_response_is_error(char *message,char *buffer,int *bytes)
 {
   if ((*bytes)<10) {
-    printf("FAIL: Too few bytes from server when looking for server message %03d\n",
-	   code);
+    printf("FAIL: Too few bytes from server when looking for server error '%s'\n",
+	   message);
     return -1;
   } else {
-    printf("SUCCESS: There are at least 10 bytes when looking for server message %03d\n",code);
+    printf("SUCCESS: There are at least 10 bytes when looking for server error '%s'\n",message);
     success++;
   }
   int n=0;
@@ -405,6 +405,7 @@ int test_servergreeting()
   int w=write(sock,cmd,strlen(cmd));
   printf("wrote %d bytes\n",w);
   // expect a 241 complaint message
+  r=read_from_socket(sock,(unsigned char *)buffer,&bytes,sizeof(buffer),2);
   test_next_response_is(241,"*",buffer,&bytes);
   sprintf(cmd,"PRIVMSG %s :%s\n\r",
 	  channel_names[getpid()&3],
@@ -412,6 +413,7 @@ int test_servergreeting()
   w=write(sock,cmd,strlen(cmd));
   printf("wrote %d bytes\n",w);
   // expect a 241 complaint message
+  r=read_from_socket(sock,(unsigned char *)buffer,&bytes,sizeof(buffer),2);
   test_next_response_is(241,"*",buffer,&bytes);
 
   return 0;
