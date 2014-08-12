@@ -219,6 +219,7 @@ int test_acceptmultipleconnections()
     // allow upto 5 minutes to handle the 1,000 connections.
     if (time(0)-start_time>300) break;
   }
+  printf("\n");
   
   int end_time=time(0);
   
