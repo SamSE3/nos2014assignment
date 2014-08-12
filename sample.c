@@ -130,59 +130,65 @@ void *client_connection(void *data)
   t->state=0;
   t->timeout=time(0)+5;
   
+  fcntl(t->fd,F_SETFL,fcntl(t->fd, F_GETFL, NULL)|O_NONBLOCK);
+
   int r=write(t->fd,SERVER_GREETING,strlen(SERVER_GREETING));
   if (r<1) perror("write");
   
   // Main socket reading loop
   while(1) {
     bytes=read(t->fd,(unsigned char *)buffer,sizeof(buffer));
-    if (bytes>-1) {
-   t->timeout=time(0)+5;
-   if (t->state) t->timeout+=55; // 60 second timeout once registered
-   for(i=0;i<bytes;i++) parse_byte(t,buffer[i]);
+    if (bytes>0) {
+      t->timeout=time(0)+5;
+      if (t->state) t->timeout+=55; // 60 second timeout once registered
+      for(i=0;i<bytes;i++) parse_byte(t,buffer[i]);
     } else {      
       // close connection on timeout
       if (time(0)>=t->timeout) {
 	write(t->fd,TIMEOUT_MESSAGE,strlen(TIMEOUT_MESSAGE));
 	break;      
-      }
+      } else
+	usleep(50000);
     }
   }
 
   close(t->fd);
-  pthread_exit(0);
+  // pthread_exit(0);
+  return 0;
 }
 
 int main(int argc,char **argv)
 {
-if (argc!=2) {
-fprintf(stderr,"usage: sample <tcp port>\n");
-exit(-1);
-}
+  // because the test program shuts connections down immediately, it is quite possible for us to find a connection that has been closed before we can properly accept it.  Thus we must ignore broken pipes
+  signal(SIGPIPE, SIG_IGN);
 
-int master_socket = create_listen_socket(atoi(argv[1]));
-
-if (pthread_rwlock_init(&message_log_lock,NULL))
-  {
-fprintf(stderr,"Failed to create rwlock for message log.\n");
-exit(-1);
-}
-
-while(1) {
-int client_sock = accept_incoming(master_socket);
-if (client_sock!=-1) {
-// Got connection -- do something with it.
-struct client_thread *t=calloc(sizeof(struct client_thread),1);
-if (t!=NULL) {
-t->fd = client_sock;
-if (pthread_create(&t->thread, NULL, client_connection, 
-		     (void*)t))
-  {
-// Thread creation failed
-close(client_sock);
-}	
-}
-}
-}
-
+  if (argc!=2) {
+  fprintf(stderr,"usage: sample <tcp port>\n");
+  exit(-1);
+  }
+  
+  int master_socket = create_listen_socket(atoi(argv[1]));
+  
+  if (pthread_rwlock_init(&message_log_lock,NULL))
+    {
+      fprintf(stderr,"Failed to create rwlock for message log.\n");
+      exit(-1);
+    }
+  
+  while(1) {
+    int client_sock = accept_incoming(master_socket);
+    if (client_sock!=-1) {
+      // Got connection -- do something with it.
+      struct client_thread *t=calloc(sizeof(struct client_thread),1);
+      if (t!=NULL) {
+	t->fd = client_sock;
+	if (pthread_create(&t->thread, NULL, client_connection, 
+			   (void*)t))
+	  {
+	    // Thread creation failed
+	    close(client_sock);
+	  }
+      }
+    }
+  }
 }
