@@ -86,15 +86,12 @@ int message_log_scan(struct client_thread *t)
     {
       char target[1024];
       int r=sscanf(message_list[t->next_message],":%*[^ ] %*s %s",target);
-      printf("message %d (r=%d) is '%s'\n",t->next_message,r,
-	     message_list[t->next_message]);
       if (r==1)
 	{
-	  printf("message for '%s' (I am '%s':   %s\n",
+	  fprintf(stderr,"message for '%s' (I am '%s':   %s\n",
 		 target,t->nickname,message_list[t->next_message]);
 	  // message is addressed to us, so print it.
 	  if (!strcasecmp(target,t->nickname)) {
-	    printf("Dispatching '%s'\n",message_list[t->next_message]);
 	    write(t->fd,message_list[t->next_message],
 		  strlen(message_list[t->next_message]));
 	  }
