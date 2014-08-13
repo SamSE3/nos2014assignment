@@ -99,10 +99,10 @@ int accept_incoming(int sock)
   return -1;
 }
 
-int server_reply(struct client_thread *t,int n,char *m)
+int server_reply(struct client_thread *t,char *n,char *m)
 {
   char msg[1024];
-  snprintf(msg,1024,":irc.nos2014.net %d %s :%s\n",
+  snprintf(msg,1024,":irc.nos2014.net %s %s :%s\n",
 	   n,t->nickname,m);
   write(t->fd,msg,strlen(msg));
   return 0;
@@ -122,13 +122,13 @@ int user_has_registered(struct client_thread *t)
 {
   t->state=1;
   // send welcome and statistics messages
-  server_reply(t,1,"Welcome to my NOS2014 IRC server");
-  server_reply(t,2,"My FAN is gard0050");
-  server_reply(t,3,"");
-  server_reply(t,4,"");
-  server_reply(t,253,"??? unknown connections");
-  server_reply(t,254,"??? channels");
-  server_reply(t,255,"??? users");
+  server_reply(t,"001","Welcome to my NOS2014 IRC server");
+  server_reply(t,"002","My FAN is gard0050");
+  server_reply(t,"003","");
+  server_reply(t,"004","");
+  server_reply(t,"253","??? unknown connections");
+  server_reply(t,"254","??? channels");
+  server_reply(t,"255","??? users");
 
   return 0;
 }
@@ -153,6 +153,10 @@ int process_line(struct client_thread *t,char *line)
       else if (!strcasecmp(thecommand,"PRIVMSG")) {
 	if (!t->state) return user_not_registered(t);
 	// join send private message to party named in thefirstarg
+	// XXX - shoud submit message to shared log
+	// For now, reflect messages to self back out immediately
+	snprintf(msg,1024,":%s",therest);
+	server_reply(t,"PRIVMSG",msg);
       }
       else if (!strcasecmp(thecommand,"QUIT")) {
 	// Quit, leaving optional quit message
@@ -176,12 +180,12 @@ int process_line(struct client_thread *t,char *line)
 	  if (t->user_command_seen) user_has_registered(t);
 	} else {
 	  // Bad nick
-	  server_reply(t,432,"Invalid nick name.");
+	  server_reply(t,"432","Invalid nick name.");
 	}
       }
       else if (!strcasecmp(thecommand,"USER")) {
 	if (t->state) {
-	  server_reply(t,462,"User already registered.");
+	  server_reply(t,"462","User already registered.");
 	} else {
 	  // note user command has been issued, but do nothing much else
 	  t->user_command_seen=1;
@@ -192,7 +196,7 @@ int process_line(struct client_thread *t,char *line)
       else {
 	// unknown command
 	//	fprintf(stderr,"Saw unknown command '%s'\n",thecommand);
-	server_reply(t,299,"Unknown command.");
+	server_reply(t,"299","Unknown command.");
       }      
     }
   else
