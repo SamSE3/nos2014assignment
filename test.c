@@ -259,15 +259,17 @@ int test_acceptmultipleconnections()
 }
 
 int test_next_response_is(char *code,char *mynick,char *buffer,int *bytes,
-			  char *inresponseto,char *expectedbody)
+			  char *inresponseto,char *expectedbody,int silentP)
 {
   if ((*bytes)<10) {
-    printf("FAIL: Too few bytes from server (%d) when looking for"
-	   " server message '%s' in response to %s\n",
-	   *bytes,code,inresponseto);
+    if (!silentP)
+      printf("FAIL: Too few bytes from server (%d) when looking for"
+	     " server message '%s' in response to %s\n",
+	     *bytes,code,inresponseto);
     return -1;
   } else {
-    printf("PROGRESS: There are at least 10 bytes when looking for server message '%s' in response to %s\n",code,inresponseto);
+    if (!silentP)
+      printf("PROGRESS: There are at least 10 bytes when looking for server message '%s' in response to %s\n",code,inresponseto);
   }
   int n=0;
   char thecode[1024];
@@ -278,39 +280,50 @@ int test_next_response_is(char *code,char *mynick,char *buffer,int *bytes,
 	       serverid,thecode,thenick,themessage,&n);
 
   if (r!=4) {
-    printf("FAIL: Could not parse server message in response to %s (parsed %d out of %d fields)\n",
+    if (!silentP) {
+      printf("FAIL: Could not parse server message in response to %s (parsed %d out of %d fields)\n",
 	   inresponseto,r,4);
-    printf("      This is what the server sent me: '%s'\n",buffer);
+      printf("      This is what the server sent me: '%s'\n",buffer);
+    }
     return -1;
   } else {
-    printf("PROGRESS: Could parse server message in response to %s (saw message type '%s')\n",inresponseto,thecode);
+    if (!silentP)
+      printf("PROGRESS: Could parse server message in response to %s (saw message type '%s')\n",inresponseto,thecode);
   }
 
   if (n>0&&(n<=(*bytes))) {
     bcopy(&buffer[n],&buffer[0],(*bytes)-n);
     (*bytes) = (*bytes) - n;
-    printf("PROGRESS: Server message in response to %s was a sensible length.\n",
-	   inresponseto);
+    if (!silentP)
+      printf("PROGRESS: Server message in response to %s was a sensible length.\n",
+	     inresponseto);
   } else {
-    printf("FAIL: Server message in response to %s was not a sensible length (length was %d).\n",inresponseto,n);
-    printf("      This is what the server sent me: '%s'\n",buffer);
+    if (!silentP) {
+      printf("FAIL: Server message in response to %s was not a sensible length (length was %d).\n",inresponseto,n);
+      printf("      This is what the server sent me: '%s'\n",buffer);
+    }
     *bytes=0;
     return -1;
   }
 
   if (strcasecmp(mynick,thenick)) {
-    printf("FAIL: Server message in response to %s contains wrong nick name (saw '%s' instead of '%s').\n",inresponseto,thenick,mynick);
+    if (!silentP)
+      printf("FAIL: Server message in response to %s contains wrong nick name (saw '%s' instead of '%s').\n",inresponseto,thenick,mynick);
     return -1;
   } else {
-    printf("PROGRESS: Server message in response to %s contains correct nick name ('%s').\n",inresponseto,mynick);
+    if (!silentP)
+      printf("PROGRESS: Server message in response to %s contains correct nick name ('%s').\n",inresponseto,mynick);
   }
   if (strcasecmp(code,thecode)) {
-    printf("FAIL: Server message in response to %s contains wrong code (saw '%s' instead of '%s').\n",
+    if (!silentP)
+      printf("FAIL: Server message in response to %s contains wrong code (saw '%s' instead of '%s').\n",
 	   inresponseto,thecode,code);
     return -1;
   } else {
-    printf("SUCCESS: Server message in response to %s contains correct response code ('%s').\n",inresponseto,code);
-    success++;
+    if (!silentP) {
+      printf("SUCCESS: Server message in response to %s contains correct response code ('%s').\n",inresponseto,code);
+      success++;
+    }
   }
 
   if (expectedbody!=NULL) {
@@ -423,7 +436,7 @@ int test_beforeregistration()
   if (bytes>8191) bytes=8191;
   if (bytes>=0&&bytes<8192) buffer[bytes]=0;
   // Check for initial server greeting
-  test_next_response_is("020","*",buffer,&bytes,"newly created connection",NULL);
+  test_next_response_is("020","*",buffer,&bytes,"newly created connection",NULL,0);
   // check that there is nothing more in there    
   if (failif(bytes>0,
 	     "Extraneous server message(s)",
@@ -451,7 +464,7 @@ int test_beforeregistration()
   else
     { printf("SUCCESS: Connected to server\n"); success++; }
   r=read_from_socket(sock,(unsigned char *)buffer,&bytes,sizeof(buffer),2);
-  test_next_response_is("020","*",buffer,&bytes,"initial connection",NULL);
+  test_next_response_is("020","*",buffer,&bytes,"initial connection",NULL,0);
   
   // Confirm that we can't send JOIN or MSG before registering
   sprintf(cmd,"JOIN %s\n\r",channel_names[getpid()&3]);
@@ -459,7 +472,7 @@ int test_beforeregistration()
   // expect a 241 complaint message
   r=read_from_socket(sock,(unsigned char *)buffer,&bytes,sizeof(buffer),2);
   test_next_response_is("241","*",buffer,&bytes,
-			"JOIN command sent before registration",NULL);
+			"JOIN command sent before registration",NULL,0);
   sprintf(cmd,"PRIVMSG %s :%s\n\r",
 	  channel_names[getpid()&3],
 	  greetings[time(0)&7]);
@@ -467,7 +480,7 @@ int test_beforeregistration()
   // expect a 241 complaint message
   r=read_from_socket(sock,(unsigned char *)buffer,&bytes,sizeof(buffer),2);
   test_next_response_is("241","*",buffer,&bytes,
-			"PRIVMSG command send before registration",NULL);
+			"PRIVMSG command send before registration",NULL,0);
 
   w=write(sock,"PING\r\n",6);
   // expect nothing
@@ -515,7 +528,7 @@ int test_registration()
   if (bytes>8191) bytes=8191;
   if (bytes>=0&&bytes<8192) buffer[bytes]=0;
   // Check for initial server greeting
-  test_next_response_is("020","*",buffer,&bytes,"initial connection",NULL);
+  test_next_response_is("020","*",buffer,&bytes,"initial connection",NULL,0);
   // check that there is nothing more in there    
   if (failif(bytes>0,
 	     "Extraneous server message(s)",
@@ -543,14 +556,14 @@ int test_registration()
   // expect registration messages
   r=read_from_socket(sock,(unsigned char *)buffer,&bytes,sizeof(buffer),2);
   // Expect 4 greeting lines (a little arbitrary, but that's okay for an assignment)
-  test_next_response_is("001",mynickname,buffer,&bytes,"USER",NULL);
-  test_next_response_is("002",mynickname,buffer,&bytes,"USER",NULL);
-  test_next_response_is("003",mynickname,buffer,&bytes,"USER",NULL);
-  test_next_response_is("004",mynickname,buffer,&bytes,"USER",NULL);
+  test_next_response_is("001",mynickname,buffer,&bytes,"USER",NULL,0);
+  test_next_response_is("002",mynickname,buffer,&bytes,"USER",NULL,0);
+  test_next_response_is("003",mynickname,buffer,&bytes,"USER",NULL,0);
+  test_next_response_is("004",mynickname,buffer,&bytes,"USER",NULL,0);
   // Also expect 3 (again an arbitrary number) of statistics lines
-  test_next_response_is("253",mynickname,buffer,&bytes,"USER",NULL);
-  test_next_response_is("254",mynickname,buffer,&bytes,"USER",NULL);
-  test_next_response_is("255",mynickname,buffer,&bytes,"USER",NULL);
+  test_next_response_is("253",mynickname,buffer,&bytes,"USER",NULL,0);
+  test_next_response_is("254",mynickname,buffer,&bytes,"USER",NULL,0);
+  test_next_response_is("255",mynickname,buffer,&bytes,"USER",NULL,0);
 
   // Make sure connection doesn't time out after 5 seconds once registered
   // (is supposed to be 60 seconds, but we will jsut check 30 so that the tests
@@ -570,7 +583,7 @@ int test_registration()
   // Check that we get a message sent back to us
   r=read_from_socket(sock,(unsigned char *)buffer,&bytes,sizeof(buffer),2);
   test_next_response_is("PRIVMSG",mynickname,buffer,&bytes,"PRIVMSG to self",
-			greeting);
+			greeting,0);
   if (failif(bytes>0,
 	     "Extraneous server message(s) after incoming PRIVMSG",
 	     "Server said nothing after incoming PRIVMSG")) {
@@ -623,7 +636,8 @@ int new_connection(char *nick)
   if (bytes>8191) bytes=8191;
   if (bytes>=0&&bytes<8192) buffer[bytes]=0;
   // Check for initial server greeting
-  test_next_response_is("020","*",buffer,&bytes,"initial connection",NULL);
+  if (test_next_response_is("020","*",buffer,&bytes,"initial connection",NULL,1))
+    return -1;
   // check that there is nothing more in there    
   if (bytes>0) return -1;
   
@@ -640,6 +654,34 @@ int new_connection(char *nick)
   r=read_from_socket(sock,(unsigned char *)buffer,&bytes,sizeof(buffer),2);
 
   return sock;
+}
+
+int test_multipleclients()
+{
+  int i;
+  char nick[1024];
+  int socks[10];
+  
+  for(i=0;i<10;i++) {
+    snprintf(nick,1024,"user%d",i);
+    socks[i]=new_connection(nick);
+    if (socks[i]<0) {
+      printf("FAIL: Could not create 10 registered connections\n");
+      for(;i>=0;i--) if (socks[i]>-1) {
+	  write(socks[i],"QUIT\r\n",6); close(socks[i]);
+	}
+      return -1;
+    }
+  }
+  printf("SUCCESS: Created 10 registered client connections.\n");
+  success++;
+
+
+  for(i=0;i<10;i++) {
+    write(socks[i],"QUIT\r\n",6); close(socks[i]);
+  }
+
+  return 0;
 }
 
 int main(int argc,char **argv)
@@ -665,6 +707,7 @@ int main(int argc,char **argv)
   test_acceptmultipleconnections();
   test_beforeregistration();
   test_registration();
+  test_multipleclients();
 
   int score=success*84/TOTAL_TESTS;
   printf("Passed %d of %d tests.\n"
