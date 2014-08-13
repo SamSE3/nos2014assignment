@@ -35,6 +35,7 @@
 #include <time.h>
 #include <errno.h>
 #include <pthread.h>
+#include <ctype.h>
 
 #define SERVER_GREETING ":irc.nos2014.net 020 * :Please register.\n"
 #define TIMEOUT_MESSAGE "ERROR :Closing link: %s (Timeout).\n"
@@ -132,8 +133,9 @@ int process_line(struct client_thread *t,char *line)
   char msg[1024];
 
   // Accept "CMD :stuff" and "CMD thing :stuff"
-  if ((sscanf(line,"%[^ ] :%[^\n]",thecommand,thefirstarg)>0)
-      ||(sscanf(line,"%[^ ] %[^ ] :%[^\n]",thecommand,thefirstarg,therest)>0))
+  if ((sscanf(line,"%[^ ] :%[^\n]",thecommand,thefirstarg)==2)
+      ||(sscanf(line,"%[^ ] %[^ ] :%[^\n]",thecommand,thefirstarg,therest)>0)
+      ||(sscanf(line,"%[^ ] %[^: \n]",thecommand,thefirstarg)==2))
     {
       // got something that looks like a command
       if (!strcasecmp(thecommand,"JOIN")) {
@@ -160,7 +162,7 @@ int process_line(struct client_thread *t,char *line)
       }
       else if (!strcasecmp(thecommand,"NICK")) {
 	// set nickname (can be done ANY time)
-	if (strlen(thefirstarg)<32&&isalpha(thefirstarg)) {
+	if ((strlen(thefirstarg)<32)&&(isalpha(thefirstarg[0]))) {
 	  strcpy(t->nickname,thefirstarg);
 	  // Allow USER command after NICK command
 	  if (t->user_command_seen) user_has_registered(t);
