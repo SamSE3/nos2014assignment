@@ -563,6 +563,12 @@ int test_registration()
     return -1;
   }
 
+  w=write(sock,"QUIT\r\n",6);
+  // expect nothing
+  r=read_from_socket(sock,(unsigned char *)buffer,&bytes,sizeof(buffer),7);
+  test_next_response_is_error("Closing Link",buffer,&bytes,
+			      "QUIT command closes connection");
+
   return 0;
 
 }
