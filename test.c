@@ -602,6 +602,46 @@ int test_registration()
 
 }
 
+int new_connection(char *nick)
+{
+  /* Test that student programme accepts 1,000 successive connections.
+     Further test that it can do so within a minute. */
+  int sock=connect_to_port(student_port);
+  if (sock==-1) return -1;
+  
+  char buffer[8192];
+  int bytes=0;
+  int r;
+  char cmd[8192];
+
+  // Check for initial server response
+  r=read_from_socket(sock,(unsigned char *)buffer,&bytes,sizeof(buffer),2);
+  if (r||(bytes<1)) {
+    close(sock);
+    return -1;
+  } 
+  if (bytes>8191) bytes=8191;
+  if (bytes>=0&&bytes<8192) buffer[bytes]=0;
+  // Check for initial server greeting
+  test_next_response_is("020","*",buffer,&bytes,"initial connection",NULL);
+  // check that there is nothing more in there    
+  if (bytes>0) return -1;
+  
+  // Now send NICK & USER commands to register.
+
+  sprintf(cmd,"NICK %s\n\r",nick);
+  int w=write(sock,cmd,strlen(cmd));
+  r=read_from_socket(sock,(unsigned char *)buffer,&bytes,sizeof(buffer),2);
+  if (bytes>0) return -1;
+
+  sprintf(cmd,"USER %s\n\r",channel_names[getpid()&3]);
+  w=write(sock,cmd,strlen(cmd));
+  // expect registration messages
+  r=read_from_socket(sock,(unsigned char *)buffer,&bytes,sizeof(buffer),2);
+
+  return sock;
+}
+
 int main(int argc,char **argv)
 {
   if (argc!=2) {
