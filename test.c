@@ -553,7 +553,9 @@ int test_registration()
   test_next_response_is("255",mynickname,buffer,&bytes,"USER",NULL);
 
   // Make sure connection doesn't time out after 5 seconds once registered
-  r=read_from_socket(sock,(unsigned char *)buffer,&bytes,sizeof(buffer),7);
+  // (is supposed to be 60 seconds, but we will jsut check 30 so that the tests
+  // don't take too long to run.
+  r=read_from_socket(sock,(unsigned char *)buffer,&bytes,sizeof(buffer),35);
   failif(bytes>0, "Server said something or timed out too quickly after registration", 
 	 "Server correctly said nothing while idle for several seconds after registration");
   if (bytes>0) {
@@ -574,6 +576,20 @@ int test_registration()
 	     "Server said nothing after incoming PRIVMSG")) {
     printf("FAIL: These are the %d extra bytes: '%s'\n",bytes,buffer);
     return -1;
+  }
+  // Make sure connection doesn't time out after 5 seconds once registered
+  // (is supposed to be 60 seconds, but we will jsut check 30 so that the tests
+  // don't take too long to run.  We have to test again here, because the previous
+  // test is immediately after registration completes, where as here the timeout
+  // should be based on having received input from us. We use 35 seconds so that if
+  // the timeout was just set to t+60 seconds at registration, the 35 seconds here
+  // plus the 35 seconds waited earlier will trigger that.
+  r=read_from_socket(sock,(unsigned char *)buffer,&bytes,sizeof(buffer),35);
+  failif(bytes>0, "Server said something or timed out too quickly after registration", 
+	 "Server correctly said nothing while idle for several seconds after registration");
+  if (bytes>0) {
+    printf("FAIL: There are %d extra bytes: '%s'\n",bytes,buffer);
+    close(sock); return -1;
   }
 
   w=write(sock,"QUIT\r\n",6);
