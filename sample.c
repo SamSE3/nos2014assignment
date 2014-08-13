@@ -122,6 +122,14 @@ int user_has_registered(struct client_thread *t)
 {
   t->state=1;
   // send welcome and statistics messages
+  server_reply(t,1,"Welcome to my NOS2014 IRC server");
+  server_reply(t,2,"My FAN is gard0050");
+  server_reply(t,3,"");
+  server_reply(t,4,"");
+  server_reply(t,253,"??? unknown connections");
+  server_reply(t,254,"??? channels");
+  server_reply(t,255,"??? users");
+
   return 0;
 }
 
