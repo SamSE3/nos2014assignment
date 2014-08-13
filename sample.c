@@ -40,8 +40,6 @@
 #define SERVER_GREETING ":irc.nos2014.net 020 * :Please register.\n"
 #define TIMEOUT_MESSAGE "ERROR :Closing link: %s (Timeout).\n"
 
-pthread_rwlock_t message_log_lock;
-
 struct client_thread {
   pthread_t thread;
   int thread_id;
@@ -57,6 +55,32 @@ struct client_thread {
   char line[1024];
   int line_len;
 };
+
+pthread_rwlock_t message_log_lock;
+#define MAX_MESSAGES 1024
+char *message_list[MAX_MESSAGES]={NULL};
+int message_count;
+
+// Put a message in the common log
+int message_log_append(char *msg)
+{
+  pthread_rwlock_wrlock(&message_log_lock);
+
+  if (message_count<MAX_MESSAGES) {
+    message_list[message_count++]=strdup(msg);
+  }
+
+  pthread_rwlock_unlock(&message_log_lock);
+  return 0;
+}
+
+// Look for new messages addressed to us
+int message_log_scan(struct client_thread *t)
+{
+  pthread_rwlock_rdlock(&message_log_lock);
+  pthread_rwlock_unlock(&message_log_lock);
+  return 0;
+}
 
 int create_listen_socket(int port)
 {
