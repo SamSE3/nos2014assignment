@@ -340,6 +340,8 @@ int main(int argc,char **argv)
       fprintf(stderr,"Failed to create rwlock for message log.\n");
       exit(-1);
     }
+
+  fcntl(master_socket,F_SETFL,fcntl(master_socket, F_GETFL, NULL)&(~O_NONBLOCK));  
   
   while(1) {
     int client_sock = accept_incoming(master_socket);
