@@ -241,15 +241,16 @@ int test_acceptmultipleconnections()
   return 0;
 }
 
-int test_next_response_is(int code,char *mynick,char *buffer,int *bytes)
+int test_next_response_is(int code,char *mynick,char *buffer,int *bytes,
+			  char *inresponseto)
 {
   if ((*bytes)<10) {
     printf("FAIL: Too few bytes from server (%d) when looking for"
-	   " server message %03d\n",
-	   *bytes,code);
+	   " server message %03d in response to %s\n",
+	   *bytes,code,inresponseto);
     return -1;
   } else {
-    printf("SUCCESS: There are at least 10 bytes when looking for server message %03d\n",code);
+    printf("SUCCESS: There are at least 10 bytes when looking for server message %03d in response to %s\n",code,inresponseto);
     success++;
   }
   int n=0;
@@ -261,53 +262,55 @@ int test_next_response_is(int code,char *mynick,char *buffer,int *bytes)
 	       serverid,&thecode,thenick,themessage,&n);
 
   if (r!=4) {
-    printf("FAIL: Could not parse server message (parsed %d out of %d fields)\n",
-	   r,4);
+    printf("FAIL: Could not parse server message in response to %s (parsed %d out of %d fields)\n",
+	   inresponseto,r,4);
     printf("      This is what the server sent me: '%s'\n",buffer);
     return -1;
   } else {
-    printf("SUCCESS: Could parse server message (saw code %03d)\n",thecode);
+    printf("SUCCESS: Could parse server message in response to %s (saw code %03d)\n",inresponseto,thecode);
     success++;
   }
 
   if (n>0&&(n<=(*bytes))) {
     bcopy(&buffer[n],&buffer[0],(*bytes)-n);
     (*bytes) = (*bytes) - n;
-    printf("SUCCESS: Server message was a sensible length.\n");
+    printf("SUCCESS: Server message in response to %s was a sensible length.\n",
+	   inresponseto);
     success++;
   } else {
-    printf("FAIL: Server message was not a sensible length (length was %d).\n",n);
+    printf("FAIL: Server message in response to %s was not a sensible length (length was %d).\n",inresponseto,n);
     printf("      This is what the server sent me: '%s'\n",buffer);
     *bytes=0;
     return -1;
   }
 
   if (strcasecmp(mynick,thenick)) {
-    printf("FAIL: Server message contains wrong nick name (saw '%s' instead of '%s').\n",thenick,mynick);
+    printf("FAIL: Server message in response to %s contains wrong nick name (saw '%s' instead of '%s').\n",inresponseto,thenick,mynick);
     return -1;
   } else {
-    printf("SUCCESS: Server message contains correct nick name.\n");
+    printf("SUCCESS: Server message in response to %s contains correct nick name.\n",inresponseto);
     success++;
   }
   if (code!=thecode) {
-    printf("FAIL: Server message contains wrong code (saw %03d instead of %03d).\n",
-	   thecode,code);
+    printf("FAIL: Server message in response to %s contains wrong code (saw %03d instead of %03d).\n",
+	   inresponseto,thecode,code);
     return -1;
   } else {
-    printf("SUCCESS: Server message contains response code (%03d).\n",code);
+    printf("SUCCESS: Server message in response to %s contains response code (%03d).\n",inresponseto,code);
     success++;
   }
   return 0;    
 }
 
-int test_next_response_is_error(char *message,char *buffer,int *bytes)
+int test_next_response_is_error(char *message,char *buffer,int *bytes,
+				char *inresponseto)
 {
   if ((*bytes)<10) {
-    printf("FAIL: Too few bytes from server (%d) when looking for server error '%s'\n",
-	   *bytes,message);
+    printf("FAIL: Too few bytes from server (%d) when looking for server error '%s' in response to %s\n",
+	   *bytes,message,inresponseto);
     return -1;
   } else {
-    printf("SUCCESS: There are at least 10 bytes when looking for server error '%s'\n",message);
+    printf("SUCCESS: There are at least 10 bytes when looking for server error '%s' in response to %s\n",message,inresponseto);
     success++;
   }
   int n=0;
@@ -317,10 +320,10 @@ int test_next_response_is_error(char *message,char *buffer,int *bytes)
   if (n>0&&(n<=(*bytes))) {
     bcopy(&buffer[n],&buffer[0],(*bytes)-n);
     (*bytes) = (*bytes) - n;
-    printf("SUCCESS: Server ERROR message was a sensible length.\n");
+    printf("SUCCESS: Server ERROR message in response to %s was a sensible length.\n",inresponseto);
     success++;
   } else {
-    printf("FAIL: Server ERROR message was not a sensible length (length was %d).\n",n);
+    printf("FAIL: Server ERROR message in response to %s was not a sensible length (length was %d).\n",inresponseto,n);
     printf("      This is what the server sent me: '%s'\n",buffer);
     printf("      Don't forget errors like like 'ERROR :foo: bar (quux)'\n");
     *bytes=0;
@@ -328,17 +331,19 @@ int test_next_response_is_error(char *message,char *buffer,int *bytes)
   }
 
   if (r!=1) {
-    printf("FAIL: Could not parse server error message (parsed %d out of %d fields)\n",r,1);
+    printf("FAIL: Could not parse server error message in response to %s (parsed %d out of %d fields)\n",inresponseto,r,1);
     return -1;
   } else {
-    printf("SUCCESS: Saw correct server error (saw '%s')\n",themessage);
+    printf("SUCCESS: Saw correct server error in response to %s (saw '%s')\n",
+	   inresponseto,themessage);
     success++;
   }
   if (strcasecmp(message,themessage)) {
-    printf("FAIL: Server error contains wrong message (saw '%s' instead of '%s').\n",themessage,message);
+    printf("FAIL: Server error in response to %s contains wrong message (saw '%s' instead of '%s').\n",inresponseto,themessage,message);
     return -1;
   } else {
-    printf("SUCCESS: Server error contains correct message.\n");
+    printf("SUCCESS: Server error in response to %s contains correct message.\n",
+	   inresponseto);
     success++;
   }
   return 0;    
@@ -395,7 +400,7 @@ int test_beforeregistration()
   if (bytes>8191) bytes=8191;
   if (bytes>=0&&bytes<8192) buffer[bytes]=0;
   // Check for initial server greeting
-  test_next_response_is(20,"*",buffer,&bytes);
+  test_next_response_is(20,"*",buffer,&bytes,"newly created connection");
   // check that there is nothing more in there    
   if (failif(bytes>0,
 	     "Extraneous server message(s)",
@@ -404,7 +409,7 @@ int test_beforeregistration()
     return -1;
   }
   r=read_from_socket(sock,(unsigned char *)buffer,&bytes,sizeof(buffer),5);
-  test_next_response_is_error("Closing Link",buffer,&bytes);
+  test_next_response_is_error("Closing Link",buffer,&bytes,"waiting 5 seconds for the connection to timeout");
   if (failif(bytes>0,
 	     "Extraneous server message(s) after timeout ERROR message",
 	     "Server said nothing else before registration")) {
@@ -422,27 +427,27 @@ int test_beforeregistration()
   else
     { printf("SUCCESS: Connected to server\n"); success++; }
   r=read_from_socket(sock,(unsigned char *)buffer,&bytes,sizeof(buffer),2);
-  test_next_response_is(20,"*",buffer,&bytes);
+  test_next_response_is(20,"*",buffer,&bytes,"initial connection");
   
   // Confirm that we can't send JOIN or MSG before registering
   sprintf(cmd,"JOIN %s\n\r",channel_names[getpid()&3]);
   int w=write(sock,cmd,strlen(cmd));
   // expect a 241 complaint message
   r=read_from_socket(sock,(unsigned char *)buffer,&bytes,sizeof(buffer),2);
-  test_next_response_is(241,"*",buffer,&bytes);
+  test_next_response_is(241,"*",buffer,&bytes,"JOIN command sent before registration");
   sprintf(cmd,"PRIVMSG %s :%s\n\r",
 	  channel_names[getpid()&3],
 	  greetings[time(0)&7]);
   w=write(sock,cmd,strlen(cmd));
   // expect a 241 complaint message
   r=read_from_socket(sock,(unsigned char *)buffer,&bytes,sizeof(buffer),2);
-  test_next_response_is(241,"*",buffer,&bytes);
+  test_next_response_is(241,"*",buffer,&bytes,"PRIVMSG command send before registration");
   sprintf(cmd,"USER %s 8 * :%s\n\r",nick_names[random()&7],
 	  real_names[random()%7]);
   w=write(sock,cmd,strlen(cmd));
   // expect a 241 complaint message
   r=read_from_socket(sock,(unsigned char *)buffer,&bytes,sizeof(buffer),2);
-  test_next_response_is(241,"*",buffer,&bytes);
+  test_next_response_is(241,"*",buffer,&bytes,"USER command sent before NICK command");
 
   return 0;
 }
@@ -476,7 +481,7 @@ int test_registration()
   if (bytes>8191) bytes=8191;
   if (bytes>=0&&bytes<8192) buffer[bytes]=0;
   // Check for initial server greeting
-  test_next_response_is(20,"*",buffer,&bytes);
+  test_next_response_is(20,"*",buffer,&bytes,"initial connection");
   // check that there is nothing more in there    
   if (failif(bytes>0,
 	     "Extraneous server message(s)",
@@ -491,13 +496,13 @@ int test_registration()
   int w=write(sock,cmd,strlen(cmd));
   // expect a 241 complaint message
   r=read_from_socket(sock,(unsigned char *)buffer,&bytes,sizeof(buffer),2);
-  test_next_response_is(241,"*",buffer,&bytes);
+  test_next_response_is(241,"*",buffer,&bytes,"NICK");
 
   sprintf(cmd,"USER %s\n\r",channel_names[getpid()&3]);
   w=write(sock,cmd,strlen(cmd));
   // expect a 241 complaint message
   r=read_from_socket(sock,(unsigned char *)buffer,&bytes,sizeof(buffer),2);
-  test_next_response_is(241,"*",buffer,&bytes);
+  test_next_response_is(241,"*",buffer,&bytes,"USER");
   sprintf(cmd,"PRIVMSG %s :%s\n\r",
 	  channel_names[getpid()&3],
 	  greetings[time(0)&7]);
