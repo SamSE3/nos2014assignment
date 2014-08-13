@@ -88,8 +88,6 @@ int message_log_scan(struct client_thread *t)
       int r=sscanf(message_list[t->next_message],":%*[^ ] %*s %s",target);
       if (r==1)
 	{
-	  fprintf(stderr,"message for '%s' (I am '%s':   %s\n",
-		 target,t->nickname,message_list[t->next_message]);
 	  // message is addressed to us, so print it.
 	  if (!strcasecmp(target,t->nickname)) {
 	    write(t->fd,message_list[t->next_message],
