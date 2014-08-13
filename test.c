@@ -468,13 +468,6 @@ int test_beforeregistration()
   r=read_from_socket(sock,(unsigned char *)buffer,&bytes,sizeof(buffer),2);
   test_next_response_is("241","*",buffer,&bytes,
 			"PRIVMSG command send before registration",NULL);
-  // Make sure connection doesn't time out after 5 seconds once registered
-  r=read_from_socket(sock,(unsigned char *)buffer,&bytes,sizeof(buffer),7);
-  failif(bytes>0, "Server said something or timed out too quickly after registration", 
-	 "Server correctly said nothing while idle for several seconds after registration");
-  if (bytes>0) {
-    printf("FAIL: There are %d extra bytes: '%s'\n",bytes,buffer);
-  }
 
   w=write(sock,"PING\r\n",6);
   // expect nothing
@@ -488,7 +481,8 @@ int test_beforeregistration()
   r=read_from_socket(sock,(unsigned char *)buffer,&bytes,sizeof(buffer),7);
   test_next_response_is_error("Closing Link",buffer,&bytes,
 			      "QUIT command closes connection");
-
+  close(sock);
+  
   return 0;
 }
 
@@ -557,6 +551,15 @@ int test_registration()
   test_next_response_is("253",mynickname,buffer,&bytes,"USER",NULL);
   test_next_response_is("254",mynickname,buffer,&bytes,"USER",NULL);
   test_next_response_is("255",mynickname,buffer,&bytes,"USER",NULL);
+
+  // Make sure connection doesn't time out after 5 seconds once registered
+  r=read_from_socket(sock,(unsigned char *)buffer,&bytes,sizeof(buffer),7);
+  failif(bytes>0, "Server said something or timed out too quickly after registration", 
+	 "Server correctly said nothing while idle for several seconds after registration");
+  if (bytes>0) {
+    printf("FAIL: There are %d extra bytes: '%s'\n",bytes,buffer);
+    close(sock); return -1;
+  }
 
   // Now that we are registered, try sending ourselves a message
   char *greeting=greetings[time(0)&7];
