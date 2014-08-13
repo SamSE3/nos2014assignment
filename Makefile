@@ -1,8 +1,10 @@
 all:	test sample
 
-test:	test.c
-	gcc -Wall -g -o test test.c
+LOPT=`uname | grep SunOS | sed 's/SunOS/-lnsl -lsocket/'`
 
-sample:	sample.c
-	gcc -Wall -g -o sample sample.c
+test:	test.c Makefile
+	gcc -Wall -g -o test test.c $(LOPT)
+
+sample:	sample.c Makefile
+	gcc -Wall -g -o sample sample.c $(LOPT)
 
