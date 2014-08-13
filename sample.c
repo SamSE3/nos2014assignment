@@ -272,6 +272,9 @@ void *client_connection(void *data)
   
   // Main socket reading loop
   while(1) {
+    // check for new messages to send out
+    message_log_scan(t);
+
     bytes=read(t->fd,(unsigned char *)buffer,sizeof(buffer));
     if (bytes>0) {
       //      fprintf(stderr,"Read %d bytes on fd %d\n",bytes,t->fd);
