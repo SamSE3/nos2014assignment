@@ -237,6 +237,21 @@ int test_acceptmultipleconnections()
   else 
     { printf("SUCCESS: Accepted 1,000 connections in less than a minute.\n");
       success++; }
+  if (end_time-start_time>30)
+    printf("FAIL: Accept 1,000 connections in less than 30 seconds.\n");
+  else 
+    { printf("SUCCESS: Accepted 1,000 connections in less than 30 seconds.\n");
+      success++; }
+  if (end_time-start_time>10)
+    printf("FAIL: Accept 1,000 connections in less than 10 seconds.\n");
+  else 
+    { printf("SUCCESS: Accepted 1,000 connections in less than 10 seconds.\n");
+      success++; }
+  if (end_time-start_time>3)
+    printf("FAIL: Accept 1,000 connections in less than 3 seconds.\n");
+  else 
+    { printf("SUCCESS: Accepted 1,000 connections in less than 3 seconds.\n");
+      success++; }
 
   return 0;
 }
