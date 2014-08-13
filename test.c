@@ -265,8 +265,7 @@ int test_next_response_is(int code,char *mynick,char *buffer,int *bytes,
 	   *bytes,code,inresponseto);
     return -1;
   } else {
-    printf("SUCCESS: There are at least 10 bytes when looking for server message %03d in response to %s\n",code,inresponseto);
-    success++;
+    printf("PROGRESS: There are at least 10 bytes when looking for server message %03d in response to %s\n",code,inresponseto);
   }
   int n=0;
   int thecode;
@@ -282,16 +281,14 @@ int test_next_response_is(int code,char *mynick,char *buffer,int *bytes,
     printf("      This is what the server sent me: '%s'\n",buffer);
     return -1;
   } else {
-    printf("SUCCESS: Could parse server message in response to %s (saw code %03d)\n",inresponseto,thecode);
-    success++;
+    printf("PROGRESS: Could parse server message in response to %s (saw code %03d)\n",inresponseto,thecode);
   }
 
   if (n>0&&(n<=(*bytes))) {
     bcopy(&buffer[n],&buffer[0],(*bytes)-n);
     (*bytes) = (*bytes) - n;
-    printf("SUCCESS: Server message in response to %s was a sensible length.\n",
+    printf("PROGRESS: Server message in response to %s was a sensible length.\n",
 	   inresponseto);
-    success++;
   } else {
     printf("FAIL: Server message in response to %s was not a sensible length (length was %d).\n",inresponseto,n);
     printf("      This is what the server sent me: '%s'\n",buffer);
@@ -303,8 +300,7 @@ int test_next_response_is(int code,char *mynick,char *buffer,int *bytes,
     printf("FAIL: Server message in response to %s contains wrong nick name (saw '%s' instead of '%s').\n",inresponseto,thenick,mynick);
     return -1;
   } else {
-    printf("SUCCESS: Server message in response to %s contains correct nick name.\n",inresponseto);
-    success++;
+    printf("PROGRESS: Server message in response to %s contains correct nick name.\n",inresponseto);
   }
   if (code!=thecode) {
     printf("FAIL: Server message in response to %s contains wrong code (saw %03d instead of %03d).\n",
@@ -325,8 +321,7 @@ int test_next_response_is_error(char *message,char *buffer,int *bytes,
 	   *bytes,message,inresponseto);
     return -1;
   } else {
-    printf("SUCCESS: There are at least 10 bytes when looking for server error '%s' in response to %s\n",message,inresponseto);
-    success++;
+    printf("PROGRESS: There are at least 10 bytes when looking for server error '%s' in response to %s\n",message,inresponseto);
   }
   int n=0;
   char themessage[*bytes];
@@ -335,8 +330,7 @@ int test_next_response_is_error(char *message,char *buffer,int *bytes,
   if (n>0&&(n<=(*bytes))) {
     bcopy(&buffer[n],&buffer[0],(*bytes)-n);
     (*bytes) = (*bytes) - n;
-    printf("SUCCESS: Server ERROR message in response to %s was a sensible length.\n",inresponseto);
-    success++;
+    printf("PROGRESS: Server ERROR message in response to %s was a sensible length.\n",inresponseto);
   } else {
     printf("FAIL: Server ERROR message in response to %s was not a sensible length (length was %d).\n",inresponseto,n);
     printf("      This is what the server sent me: '%s'\n",buffer);
@@ -349,9 +343,8 @@ int test_next_response_is_error(char *message,char *buffer,int *bytes,
     printf("FAIL: Could not parse server error message in response to %s (parsed %d out of %d fields)\n",inresponseto,r,1);
     return -1;
   } else {
-    printf("SUCCESS: Saw correct server error in response to %s (saw '%s')\n",
+    printf("PROGRESS: Saw well-formed server error in response to %s (saw '%s')\n",
 	   inresponseto,themessage);
-    success++;
   }
   if (strcasecmp(message,themessage)) {
     printf("FAIL: Server error in response to %s contains wrong message (saw '%s' instead of '%s').\n",inresponseto,themessage,message);
