@@ -704,6 +704,7 @@ int test_multipleclients()
       char *greeting=greetings[random()&7];
       snprintf(nick,1024,"user%d",target);
       sprintf(cmd,"PRIVMSG %s :%s\n\r",nick,greeting);
+      write(socks[i],cmd,strlen(cmd));
       // Make sure that each client receives the message sent to it
       bytes=0;
       r=read_from_socket(socks[target],(unsigned char *)buffer,
@@ -727,10 +728,15 @@ int test_multipleclients()
       }
     }
 
+  printf("SUCCESS: Messages get delivered between clients.\n");
+  success++;
+
   // clean up after ourselves
   for(i=0;i<10;i++) {
     write(socks[i],"QUIT\r\n",6); close(socks[i]);
   }
+
+
 
   return 0;
 }
