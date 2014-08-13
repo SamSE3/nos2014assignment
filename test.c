@@ -709,14 +709,14 @@ int test_multipleclients()
       bytes=0;
       r=read_from_socket(socks[target],(unsigned char *)buffer,
 			 &bytes,sizeof(buffer),2);
-      snprintf(nick,1024,"user%d",i);      
+      snprintf(nick,1024,"user%d",target);      
       test_next_response_is("PRIVMSG",nick,buffer,&bytes,"PRIVMSG to another user",
 			greeting,0);
       r=read_from_socket(socks[i],(unsigned char *)buffer,
 			 &bytes,sizeof(buffer),1);
       if (r>0) {
 	snprintf(nick,1024,"user%d",target);      
-	printf("FAIL: PRIVMSG to %s was sent to other client(s)\n",nick);
+	printf("FAIL: PRIVMSG to %s didn't make it to the other client(s)\n",nick);
 	break;
       }
       r=read_from_socket(socks[(i+1)%10],(unsigned char *)buffer,
@@ -727,9 +727,6 @@ int test_multipleclients()
 	break;
       }
     }
-
-  printf("SUCCESS: Messages get delivered between clients.\n");
-  success++;
 
   // clean up after ourselves
   for(i=0;i<10;i++) {
