@@ -35,7 +35,7 @@
 #include <time.h>
 #include <errno.h>
 
-#define TOTAL_TESTS 33
+#define TOTAL_TESTS 59
 
 pid_t student_pid=-1;
 int student_port;
@@ -662,6 +662,12 @@ int new_connection(char *nick)
   test_next_response_is("253",nick,buffer,&bytes,"USER",NULL,1);
   test_next_response_is("254",nick,buffer,&bytes,"USER",NULL,1);
   test_next_response_is("255",nick,buffer,&bytes,"USER",NULL,1);
+  if (bytes>0) {
+    printf("FAIL: Server sent extra stuff after registration.\n");
+    printf("      The %d bytes are: '%s'\n",bytes,buffer);
+    close(sock);
+    return -1;
+  }
 
   return sock;
 }
@@ -694,13 +700,15 @@ int test_multipleclients()
 
   int j;
 
+  int delta=(random()%9)+1;
+
   // Send messages between clients
   for(i=0;i<10;i++)
     {
       // send PONGs to all clients regularly to keep them alive
       for(j=0;j<10;j++) write(socks[j],"PONG\r\n",6);
 
-      int target=(i+3)%10;
+      int target=(i+delta)%10;
       char *greeting=greetings[random()&7];
       snprintf(nick,1024,"user%d",target);
       sprintf(cmd,"PRIVMSG %s :%s\n\r",nick,greeting);
@@ -733,8 +741,25 @@ int test_multipleclients()
     write(socks[i],"QUIT\r\n",6); close(socks[i]);
   }
 
-
-
+  // Now create a new connection, and make sure that the old messages don't get
+  // re-delivered.
+  i=random()%10;
+  snprintf(nick,1024,"user%d",i);
+  int sock=new_connection(nick);
+  if (sock>0) {
+    printf("SUCCESS: A new session with a re-used nick does not receive old messages on connection.\n");
+    success++;
+  }
+  r=read_from_socket(sock,(unsigned char *)buffer,
+		     &bytes,sizeof(buffer),2);
+  if (r<1) {
+    printf("SUCCESS: A new session with a re-used nick does not receive old messages soon after connection.\n");
+    success++;
+  } else {
+    printf("FAIL: A new session with a re-used nick received old messages soon after connection.\n");
+  }
+  write(sock,"QUIT\r\n",6); close(sock);
+  
   return 0;
 }
 
