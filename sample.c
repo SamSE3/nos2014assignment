@@ -121,6 +121,11 @@ int user_not_registered(struct client_thread *t)
 int user_has_registered(struct client_thread *t)
 {
   t->state=1;
+  t->timeout=time(0)+5;
+  if (t->state) {
+    t->timeout+=55; // 60 second timeout once registered
+  }
+
   // send welcome and statistics messages
   server_reply(t,"001","Welcome to my NOS2014 IRC server");
   server_reply(t,"002","My FAN is gard0050");
@@ -247,7 +252,9 @@ void *client_connection(void *data)
     if (bytes>0) {
       //      fprintf(stderr,"Read %d bytes on fd %d\n",bytes,t->fd);
       t->timeout=time(0)+5;
-      if (t->state) t->timeout+=55; // 60 second timeout once registered
+      if (t->state) {
+	t->timeout+=55; // 60 second timeout once registered
+      }
       for(i=0;i<bytes;i++) parse_byte(t,buffer[i]);
     } else {      
       // close connection on timeout
