@@ -49,6 +49,8 @@ struct client_thread {
   char nickname[32];
 
   int state;
+  int user_command_seen;
+  int user_has_registered;
   time_t timeout;
 
   char line[1024];
@@ -115,6 +117,13 @@ int user_not_registered(struct client_thread *t)
   return 0;
 }
 
+int user_has_registered(struct client_thread *t)
+{
+  t->state=1;
+  // send welcome and statistics messages
+  return 0;
+}
+
 int process_line(struct client_thread *t,char *line)
 {
   char thecommand[1024]="";
@@ -146,6 +155,30 @@ int process_line(struct client_thread *t,char *line)
 	fflush(stderr);
 	pthread_exit(0);
       }
+      else if (!strcasecmp(thecommand,"PING")) {
+	// just resets the keep alive
+      }
+      else if (!strcasecmp(thecommand,"NICK")) {
+	// set nickname (can be done ANY time)
+	if (strlen(thefirstarg)<32&&isalpha(thefirstarg)) {
+	  strcpy(t->nickname,thefirstarg);
+	  // Allow USER command after NICK command
+	  if (t->user_command_seen) user_has_registered(t);
+	} else {
+	  // Bad nick
+	  server_reply(t,432,"Invalid nick name.");
+	}
+      }
+      else if (!strcasecmp(thecommand,"USER")) {
+	if (t->state) {
+	  server_reply(t,462,"User already registered.");
+	} else {
+	  // note user command has been issued, but do nothing much else
+	  t->user_command_seen=1;
+	  // note that user is registered if we have also set the nick
+	  if (t->nickname[0]!='*') user_has_registered(t);
+	}
+      }
       else {
 	// unknown command
 	//	fprintf(stderr,"Saw unknown command '%s'\n",thecommand);
@@ -159,8 +192,8 @@ int process_line(struct client_thread *t,char *line)
     }
 
   return 0;
-}
-
+    }
+  
 int parse_byte(struct client_thread *t, char c)
 {
   // Parse next byte read on socket.
