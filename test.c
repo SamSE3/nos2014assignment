@@ -35,7 +35,7 @@
 #include <time.h>
 #include <errno.h>
 
-#define TOTAL_TESTS 32
+#define TOTAL_TESTS 33
 
 pid_t student_pid=-1;
 int student_port;
@@ -259,7 +259,7 @@ int test_acceptmultipleconnections()
 }
 
 int test_next_response_is(char *code,char *mynick,char *buffer,int *bytes,
-			  char *inresponseto)
+			  char *inresponseto,char *expectedbody)
 {
   if ((*bytes)<10) {
     printf("FAIL: Too few bytes from server (%d) when looking for"
@@ -312,6 +312,19 @@ int test_next_response_is(char *code,char *mynick,char *buffer,int *bytes,
     printf("SUCCESS: Server message in response to %s contains correct response code ('%s').\n",inresponseto,code);
     success++;
   }
+
+  if (expectedbody!=NULL) {
+    if (strcasecmp(code,thecode)) {
+      printf("FAIL: Server message in response to %s contains body (saw '%s' instead of '%s').\n",
+	     inresponseto,themessage,expectedbody);
+      return -1;
+    } else {
+      printf("SUCCESS: Server message in response to %s contains correct response body ('%s').\n",inresponseto,expectedbody);
+      success++;
+    }
+    
+  }
+
   return 0;    
 }
 
@@ -410,7 +423,7 @@ int test_beforeregistration()
   if (bytes>8191) bytes=8191;
   if (bytes>=0&&bytes<8192) buffer[bytes]=0;
   // Check for initial server greeting
-  test_next_response_is("020","*",buffer,&bytes,"newly created connection");
+  test_next_response_is("020","*",buffer,&bytes,"newly created connection",NULL);
   // check that there is nothing more in there    
   if (failif(bytes>0,
 	     "Extraneous server message(s)",
@@ -419,7 +432,8 @@ int test_beforeregistration()
     return -1;
   }
   r=read_from_socket(sock,(unsigned char *)buffer,&bytes,sizeof(buffer),5);
-  test_next_response_is_error("Closing Link",buffer,&bytes,"waiting 5 seconds for the connection to timeout");
+  test_next_response_is_error("Closing Link",buffer,&bytes,
+			      "waiting 5 seconds for the connection to timeout");
   if (failif(bytes>0,
 	     "Extraneous server message(s) after timeout ERROR message",
 	     "Server said nothing else before registration")) {
@@ -437,21 +451,23 @@ int test_beforeregistration()
   else
     { printf("SUCCESS: Connected to server\n"); success++; }
   r=read_from_socket(sock,(unsigned char *)buffer,&bytes,sizeof(buffer),2);
-  test_next_response_is("020","*",buffer,&bytes,"initial connection");
+  test_next_response_is("020","*",buffer,&bytes,"initial connection",NULL);
   
   // Confirm that we can't send JOIN or MSG before registering
   sprintf(cmd,"JOIN %s\n\r",channel_names[getpid()&3]);
   int w=write(sock,cmd,strlen(cmd));
   // expect a 241 complaint message
   r=read_from_socket(sock,(unsigned char *)buffer,&bytes,sizeof(buffer),2);
-  test_next_response_is("241","*",buffer,&bytes,"JOIN command sent before registration");
+  test_next_response_is("241","*",buffer,&bytes,
+			"JOIN command sent before registration",NULL);
   sprintf(cmd,"PRIVMSG %s :%s\n\r",
 	  channel_names[getpid()&3],
 	  greetings[time(0)&7]);
   w=write(sock,cmd,strlen(cmd));
   // expect a 241 complaint message
   r=read_from_socket(sock,(unsigned char *)buffer,&bytes,sizeof(buffer),2);
-  test_next_response_is("241","*",buffer,&bytes,"PRIVMSG command send before registration");
+  test_next_response_is("241","*",buffer,&bytes,
+			"PRIVMSG command send before registration",NULL);
   w=write(sock,"PING\r\n",6);
   // expect nothing
   r=read_from_socket(sock,(unsigned char *)buffer,&bytes,sizeof(buffer),2);
@@ -460,7 +476,8 @@ int test_beforeregistration()
   w=write(sock,"QUIT\r\n",6);
   // expect nothing
   r=read_from_socket(sock,(unsigned char *)buffer,&bytes,sizeof(buffer),7);
-  test_next_response_is_error("Closing Link",buffer,&bytes,"QUIT command closes connection");
+  test_next_response_is_error("Closing Link",buffer,&bytes,
+			      "QUIT command closes connection");
 
   return 0;
 }
@@ -494,7 +511,7 @@ int test_registration()
   if (bytes>8191) bytes=8191;
   if (bytes>=0&&bytes<8192) buffer[bytes]=0;
   // Check for initial server greeting
-  test_next_response_is("020","*",buffer,&bytes,"initial connection");
+  test_next_response_is("020","*",buffer,&bytes,"initial connection",NULL);
   // check that there is nothing more in there    
   if (failif(bytes>0,
 	     "Extraneous server message(s)",
@@ -522,14 +539,14 @@ int test_registration()
   // expect registration messages
   r=read_from_socket(sock,(unsigned char *)buffer,&bytes,sizeof(buffer),2);
   // Expect 4 greeting lines (a little arbitrary, but that's okay for an assignment)
-  test_next_response_is("001",mynickname,buffer,&bytes,"USER");
-  test_next_response_is("002",mynickname,buffer,&bytes,"USER");
-  test_next_response_is("003",mynickname,buffer,&bytes,"USER");
-  test_next_response_is("004",mynickname,buffer,&bytes,"USER");
+  test_next_response_is("001",mynickname,buffer,&bytes,"USER",NULL);
+  test_next_response_is("002",mynickname,buffer,&bytes,"USER",NULL);
+  test_next_response_is("003",mynickname,buffer,&bytes,"USER",NULL);
+  test_next_response_is("004",mynickname,buffer,&bytes,"USER",NULL);
   // Also expect 3 (again an arbitrary number) of statistics lines
-  test_next_response_is("253",mynickname,buffer,&bytes,"USER");
-  test_next_response_is("254",mynickname,buffer,&bytes,"USER");
-  test_next_response_is("255",mynickname,buffer,&bytes,"USER");
+  test_next_response_is("253",mynickname,buffer,&bytes,"USER",NULL);
+  test_next_response_is("254",mynickname,buffer,&bytes,"USER",NULL);
+  test_next_response_is("255",mynickname,buffer,&bytes,"USER",NULL);
 
   // Now that we are registered, try sending ourselves a message
   char *greeting=greetings[time(0)&7];
@@ -537,7 +554,8 @@ int test_registration()
   w=write(sock,cmd,strlen(cmd));
   // Check that we get a message sent back to us
   r=read_from_socket(sock,(unsigned char *)buffer,&bytes,sizeof(buffer),2);
-  test_next_response_is("PRIVMSG",mynickname,buffer,&bytes,"PRIVMSG to self");
+  test_next_response_is("PRIVMSG",mynickname,buffer,&bytes,"PRIVMSG to self",
+			greeting);
   if (failif(bytes>0,
 	     "Extraneous server message(s) after incoming PRIVMSG",
 	     "Server said nothing after incoming PRIVMSG")) {
