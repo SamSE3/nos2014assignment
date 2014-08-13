@@ -652,6 +652,16 @@ int new_connection(char *nick)
   w=write(sock,cmd,strlen(cmd));
   // expect registration messages
   r=read_from_socket(sock,(unsigned char *)buffer,&bytes,sizeof(buffer),2);
+  // Expect 4 greeting lines (a little arbitrary, but that's okay for an assignment)
+  test_next_response_is("001",nick,buffer,&bytes,"USER",NULL,1);
+  test_next_response_is("002",nick,buffer,&bytes,"USER",NULL,1);
+  test_next_response_is("003",nick,buffer,&bytes,"USER",NULL,1);
+  test_next_response_is("004",nick,buffer,&bytes,"USER",NULL,1);
+  // Also expect 3 (again an arbitrary number) of statistics lines
+  test_next_response_is("253",nick,buffer,&bytes,"USER",NULL,1);
+  test_next_response_is("254",nick,buffer,&bytes,"USER",NULL,1);
+  test_next_response_is("255",nick,buffer,&bytes,"USER",NULL,1);
+
 
   return sock;
 }
