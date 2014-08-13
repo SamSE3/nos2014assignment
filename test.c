@@ -450,12 +450,15 @@ int test_beforeregistration()
   // expect a 241 complaint message
   r=read_from_socket(sock,(unsigned char *)buffer,&bytes,sizeof(buffer),2);
   test_next_response_is(241,"*",buffer,&bytes,"PRIVMSG command send before registration");
-  sprintf(cmd,"USER %s 8 * :%s\n\r",nick_names[random()&7],
-	  real_names[random()%7]);
-  w=write(sock,cmd,strlen(cmd));
-  // expect a 241 complaint message
+  w=write(sock,"PING\r\n",6);
+  // expect nothing
   r=read_from_socket(sock,(unsigned char *)buffer,&bytes,sizeof(buffer),2);
-  test_next_response_is(241,"*",buffer,&bytes,"USER command sent before NICK command");
+  failif(bytes>0, "Server said something in response to PING command", 
+	 "Server correctly said nothing in response to PING");
+  w=write(sock,"QUIT\r\n",6);
+  // expect nothing
+  r=read_from_socket(sock,(unsigned char *)buffer,&bytes,sizeof(buffer),7);
+  test_next_response_is_error("Closing Link",buffer,&bytes,"QUIT command closes connection");
 
   return 0;
 }
@@ -502,9 +505,13 @@ int test_registration()
 
   sprintf(cmd,"NICK %s\n\r",nick_names[random()&7]);
   int w=write(sock,cmd,strlen(cmd));
-  // expect a 241 complaint message
   r=read_from_socket(sock,(unsigned char *)buffer,&bytes,sizeof(buffer),2);
-  test_next_response_is(241,"*",buffer,&bytes,"NICK");
+  if (failif(bytes>0,
+	     "Extraneous server message(s) after NICK but before USER was sent",
+	     "Server said nothing extra during registration")) {
+    printf("FAIL: There are %d extra bytes: '%s'\n",bytes,buffer);
+    return -1;
+  }
 
   sprintf(cmd,"USER %s\n\r",channel_names[getpid()&3]);
   w=write(sock,cmd,strlen(cmd));
