@@ -131,6 +131,7 @@ int read_from_socket(int sock,unsigned char *buffer,int *count,int buffer_size,
   while(r!=0) {
     if (r>0) {
       (*count)+=r;
+      break;
     }
     r=read(sock,&buffer[*count],buffer_size-*count);
     if (r==-1&&errno!=EAGAIN) {
@@ -444,7 +445,7 @@ int test_beforeregistration()
     printf("FAIL: There are %d extra bytes: '%s'\n",bytes,buffer);
     return -1;
   }
-  r=read_from_socket(sock,(unsigned char *)buffer,&bytes,sizeof(buffer),5);
+  r=read_from_socket(sock,(unsigned char *)buffer,&bytes,sizeof(buffer),6);
   test_next_response_is_error("Closing Link",buffer,&bytes,
 			      "waiting 5 seconds for the connection to timeout");
   if (failif(bytes>0,
@@ -645,7 +646,7 @@ int new_connection(char *nick)
 
   sprintf(cmd,"NICK %s\n\r",nick);
   int w=write(sock,cmd,strlen(cmd));
-  r=read_from_socket(sock,(unsigned char *)buffer,&bytes,sizeof(buffer),2);
+  r=read_from_socket(sock,(unsigned char *)buffer,&bytes,sizeof(buffer),1);
   if (bytes>0) return -1;
 
   sprintf(cmd,"USER %s\n\r",channel_names[getpid()&3]);
@@ -661,7 +662,6 @@ int new_connection(char *nick)
   test_next_response_is("253",nick,buffer,&bytes,"USER",NULL,1);
   test_next_response_is("254",nick,buffer,&bytes,"USER",NULL,1);
   test_next_response_is("255",nick,buffer,&bytes,"USER",NULL,1);
-
 
   return sock;
 }
@@ -755,10 +755,10 @@ int main(int argc,char **argv)
   }
 
   test_listensonport();
+  test_multipleclients();
   test_acceptmultipleconnections();
   test_beforeregistration();
   test_registration();
-  test_multipleclients();
 
   int score=success*84/TOTAL_TESTS;
   printf("Passed %d of %d tests.\n"

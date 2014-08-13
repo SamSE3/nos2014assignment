@@ -90,7 +90,8 @@ int message_log_scan(struct client_thread *t)
 	     message_list[t->next_message]);
       if (r==1)
 	{
-	  printf("message for '%s':   %s\n",target,message_list[t->next_message]);
+	  printf("message for '%s' (I am '%s':   %s\n",
+		 target,t->nickname,message_list[t->next_message]);
 	  // message is addressed to us, so print it.
 	  if (!strcasecmp(target,t->nickname)) {
 	    printf("Dispatching '%s'\n",message_list[t->next_message]);
