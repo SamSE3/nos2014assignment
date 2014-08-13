@@ -672,6 +672,8 @@ int test_multipleclients()
   char nick[1024];
   int socks[10];
   
+  char cmd[1024];
+
   for(i=0;i<10;i++) {
     snprintf(nick,1024,"user%d",i);
     socks[i]=new_connection(nick);
@@ -686,7 +688,28 @@ int test_multipleclients()
   printf("SUCCESS: Created 10 registered client connections.\n");
   success++;
 
+  char buffer[1024];
+  int bytes;
+  int r;
 
+  // Send messages between clients
+  for(i=0;i<10;i++)
+    {
+      int target=(i+3)%10;
+      char *greeting=greetings[random()&7];
+      snprintf(nick,1024,"user%d",target);
+      sprintf(cmd,"PRIVMSG %s :%s\n\r",nick,greeting);
+      // Make sure that each client receives the message sent to it
+      bytes=0;
+      r=read_from_socket(socks[target],(unsigned char *)buffer,
+			 &bytes,sizeof(buffer),2);
+      snprintf(nick,1024,"user%d",i);      
+      test_next_response_is("PRIVMSG",nick,buffer,&bytes,"PRIVMSG to another user",
+			greeting,0);
+  
+    }
+
+  // clean up after ourselves
   for(i=0;i<10;i++) {
     write(socks[i],"QUIT\r\n",6); close(socks[i]);
   }
