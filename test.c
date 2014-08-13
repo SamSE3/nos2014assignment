@@ -503,7 +503,9 @@ int test_registration()
   
   // Now send NICK & USER commands to register.
 
-  sprintf(cmd,"NICK %s\n\r",nick_names[random()&7]);
+  char *mynickname=nick_names[random()&7];
+
+  sprintf(cmd,"NICK %s\n\r",mynickname);
   int w=write(sock,cmd,strlen(cmd));
   r=read_from_socket(sock,(unsigned char *)buffer,&bytes,sizeof(buffer),2);
   if (failif(bytes>0,
@@ -515,9 +517,17 @@ int test_registration()
 
   sprintf(cmd,"USER %s\n\r",channel_names[getpid()&3]);
   w=write(sock,cmd,strlen(cmd));
-  // expect a 241 complaint message
+  // expect registration messages
   r=read_from_socket(sock,(unsigned char *)buffer,&bytes,sizeof(buffer),2);
-  test_next_response_is(241,"*",buffer,&bytes,"USER");
+  // Expect 4 greeting lines (a little arbitrary, but that's okay for an assignment)
+  test_next_response_is(001,mynickname,buffer,&bytes,"USER");
+  test_next_response_is(002,mynickname,buffer,&bytes,"USER");
+  test_next_response_is(003,mynickname,buffer,&bytes,"USER");
+  test_next_response_is(004,mynickname,buffer,&bytes,"USER");
+  // Also expect 3 (again an arbitrary number) of statistics lines
+  test_next_response_is(253,mynickname,buffer,&bytes,"USER");
+  test_next_response_is(254,mynickname,buffer,&bytes,"USER");
+  test_next_response_is(255,mynickname,buffer,&bytes,"USER");
   sprintf(cmd,"PRIVMSG %s :%s\n\r",
 	  channel_names[getpid()&3],
 	  greetings[time(0)&7]);
