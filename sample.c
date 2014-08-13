@@ -147,7 +147,7 @@ int process_line(struct client_thread *t,char *line)
       else if (!strcasecmp(thecommand,"QUIT")) {
 	// Quit, leaving optional quit message
 	if (!thefirstarg[0]) strcpy(thefirstarg,"Goodbye");
-	snprintf(msg,1024,"ERROR :Closing link %s (%s).\n",
+	snprintf(msg,1024,"ERROR :Closing link: %s (%s).\n",
 		 t->nickname,thefirstarg);
 	// XXX should submit quit message to shared log
 	write(t->fd,msg,strlen(msg));
