@@ -482,11 +482,11 @@ int test_beforeregistration()
   test_next_response_is("241","*",buffer,&bytes,
 			"PRIVMSG command send before registration",NULL,0);
 
-  w=write(sock,"PING\r\n",6);
+  w=write(sock,"PONG\r\n",6);
   // expect nothing
   r=read_from_socket(sock,(unsigned char *)buffer,&bytes,sizeof(buffer),2);
-  failif(bytes>0, "Server said something in response to PING command", 
-	 "Server correctly said nothing in response to PING");
+  failif(bytes>0, "Server said something in response to PONG command", 
+	 "Server correctly said nothing in response to PONG");
 
 
   w=write(sock,"QUIT\r\n",6);
@@ -692,9 +692,14 @@ int test_multipleclients()
   int bytes;
   int r;
 
+  int j;
+
   // Send messages between clients
   for(i=0;i<10;i++)
     {
+      // send PONGs to all clients regularly to keep them alive
+      for(j=0;j<10;j++) write(socks[j],"PONG\r\n",6);
+
       int target=(i+3)%10;
       char *greeting=greetings[random()&7];
       snprintf(nick,1024,"user%d",target);
@@ -706,7 +711,20 @@ int test_multipleclients()
       snprintf(nick,1024,"user%d",i);      
       test_next_response_is("PRIVMSG",nick,buffer,&bytes,"PRIVMSG to another user",
 			greeting,0);
-  
+      r=read_from_socket(socks[i],(unsigned char *)buffer,
+			 &bytes,sizeof(buffer),1);
+      if (r>0) {
+	snprintf(nick,1024,"user%d",target);      
+	printf("FAIL: PRIVMSG to %s was sent to other client(s)\n",nick);
+	break;
+      }
+      r=read_from_socket(socks[(i+1)%10],(unsigned char *)buffer,
+			 &bytes,sizeof(buffer),1);
+      if (r>0) {
+	snprintf(nick,1024,"user%d",target);      
+	printf("FAIL: PRIVMSG to %s was sent to other client(s)\n",nick);
+	break;
+      }
     }
 
   // clean up after ourselves
