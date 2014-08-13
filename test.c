@@ -267,6 +267,7 @@ int test_next_response_is(int code,char *mynick,char *buffer,int *bytes)
     return -1;
   } else {
     printf("SUCCESS: Could parse server message (saw code %03d)\n",thecode);
+    success++;
   }
 
   if (n>0&&(n<=(*bytes))) {
@@ -286,13 +287,15 @@ int test_next_response_is(int code,char *mynick,char *buffer,int *bytes)
     return -1;
   } else {
     printf("SUCCESS: Server message contains correct nick name.\n");
+    success++;
   }
   if (code!=thecode) {
     printf("FAIL: Server message contains wrong code (saw %03d instead of %03d).\n",
 	   thecode,code);
     return -1;
   } else {
-    printf("SUCCESS: Server message contains correct nick name.\n");
+    printf("SUCCESS: Server message contains response code (%03d).\n",code);
+    success++;
   }
   return 0;    
 }
@@ -329,12 +332,14 @@ int test_next_response_is_error(char *message,char *buffer,int *bytes)
     return -1;
   } else {
     printf("SUCCESS: Saw correct server error (saw '%s')\n",themessage);
+    success++;
   }
   if (strcasecmp(message,themessage)) {
     printf("FAIL: Server error contains wrong message (saw '%s' instead of '%s').\n",themessage,message);
     return -1;
   } else {
     printf("SUCCESS: Server error contains correct message.\n");
+    success++;
   }
   return 0;    
 }
@@ -355,8 +360,13 @@ char *channel_names[]={"#deutsch","#koeln","#leipzig","#bonn"};
 char *greetings[]={"Hallo alle","Guten abend","Wie geht's alle?","moin",
 		   "Gibt es jemand hier?","Ich bin eine Kartoffel",
 		   "Pausenzeit","Kann mir jemand helfen mit meinem Auftragt?"};
+char *nick_names[]={"agentsmith","neo","trinity","sportacus",
+		    "yogibear","silvester","daffy","wecoyote"};
+char *real_names[]={"Sabina Müller","Michael J. Fox","A. Troll","Tony Abbott",
+		    "Queen Elizabeth, Lord of Mann","Bob the Tomato",
+		    "Napoleon Bonaparte","Valgerður Gunnarsdóttir"};
 
-int test_servergreeting()
+int test_beforeregistration()
 {
   /* Test that student programme accepts 1,000 successive connections.
      Further test that it can do so within a minute. */
@@ -427,10 +437,77 @@ int test_servergreeting()
   // expect a 241 complaint message
   r=read_from_socket(sock,(unsigned char *)buffer,&bytes,sizeof(buffer),2);
   test_next_response_is(241,"*",buffer,&bytes);
+  sprintf(cmd,"USER %s 8 * :%s\n\r",nick_names[random()&7],
+	  real_names[random()%7]);
+  w=write(sock,cmd,strlen(cmd));
+  // expect a 241 complaint message
+  r=read_from_socket(sock,(unsigned char *)buffer,&bytes,sizeof(buffer),2);
+  test_next_response_is(241,"*",buffer,&bytes);
 
   return 0;
 }
 
+int test_registration()
+{
+  /* Test that student programme accepts 1,000 successive connections.
+     Further test that it can do so within a minute. */
+  int sock=connect_to_port(student_port);
+  if (sock==-1) {
+    printf("FAIL: Could not connect to server\n");
+      return -1;
+  }
+  else
+    { printf("SUCCESS: Connected to server\n"); success++; }
+  
+  char buffer[8192];
+  int bytes=0;
+  int r;
+  char cmd[8192];
+
+  // Check for initial server response
+  r=read_from_socket(sock,(unsigned char *)buffer,&bytes,sizeof(buffer),2);
+  if (r||(bytes<1)) {
+    close(sock);
+    printf("FAIL: No greeting received from server.\n");
+    return -1;
+  } else {
+    printf("SUCCESS: Server said something\n"); success++; 
+  } 
+  if (bytes>8191) bytes=8191;
+  if (bytes>=0&&bytes<8192) buffer[bytes]=0;
+  // Check for initial server greeting
+  test_next_response_is(20,"*",buffer,&bytes);
+  // check that there is nothing more in there    
+  if (failif(bytes>0,
+	     "Extraneous server message(s)",
+	     "Server said nothing else before registration")) {
+    printf("FAIL: There are %d extra bytes: '%s'\n",bytes,buffer);
+    return -1;
+  }
+  
+  // Now send NICK & USER commands to register.
+
+  sprintf(cmd,"NICK %s\n\r",nick_names[random()&7]);
+  int w=write(sock,cmd,strlen(cmd));
+  // expect a 241 complaint message
+  r=read_from_socket(sock,(unsigned char *)buffer,&bytes,sizeof(buffer),2);
+  test_next_response_is(241,"*",buffer,&bytes);
+
+  sprintf(cmd,"USER %s\n\r",channel_names[getpid()&3]);
+  w=write(sock,cmd,strlen(cmd));
+  // expect a 241 complaint message
+  r=read_from_socket(sock,(unsigned char *)buffer,&bytes,sizeof(buffer),2);
+  test_next_response_is(241,"*",buffer,&bytes);
+  sprintf(cmd,"PRIVMSG %s :%s\n\r",
+	  channel_names[getpid()&3],
+	  greetings[time(0)&7]);
+  w=write(sock,cmd,strlen(cmd));
+
+  // XXX incomplete
+
+  return 0;
+
+}
 
 int main(int argc,char **argv)
 {
@@ -453,7 +530,8 @@ int main(int argc,char **argv)
 
   test_listensonport();
   test_acceptmultipleconnections();
-  test_servergreeting();
+  test_beforeregistration();
+  test_registration();
 
   int score=success*84/25;
   printf("Passed %d of 25 tests.\n"
