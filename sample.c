@@ -198,7 +198,7 @@ int process_line(struct client_thread *t,char *line)
 	fflush(stderr);
 	pthread_exit(0);
       }
-      else if (!strcasecmp(thecommand,"PING")) {
+      else if (!strcasecmp(thecommand,"PONG")) {
 	// just resets the keep alive
       }
       else if (!strcasecmp(thecommand,"NICK")) {
