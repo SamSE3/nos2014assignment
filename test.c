@@ -783,10 +783,10 @@ int main(int argc,char **argv)
   }
 
   test_listensonport();
-  test_multipleclients();
   test_acceptmultipleconnections();
   test_beforeregistration();
   test_registration();
+  test_multipleclients();
 
   int score=success*84/TOTAL_TESTS;
   printf("Passed %d of %d tests.\n"
