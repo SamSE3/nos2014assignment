@@ -1,6 +1,9 @@
 nos2014assignment
 =================
 
+Introduction
+------------
+
 For this assignment you will be applying both network and operating systems programming
 techniques.
 
@@ -24,6 +27,52 @@ does, but understanding WHY it is there is not so trivial.
   
 In other words, to get an
 HD your program must be both machine and human readable. 
+
+Recommended approach
+--------------------
+
+I recommend that you start with the mostly empty sample.c that I provide, and use
+this as the basis for your program.  Compile and run this through the test program,
+with something like:
+
+make && ./test ./sample
+
+And pay attention to what it outputs.  The FAIL messages will tell you the next thing
+that doesn't work in your program.  Fix that, then move on to the next one.  If any are
+too hard, then skip them and work on another.
+
+I have supplied you with the source code for the test program, and you are welcome to look
+at that to get a better idea of what is being tested.  You can also use it as a reference
+for many of the network programming tasks you will need.  IF YOU USE ANY OF THE TEST PROGRAM
+IN YOUR OWN you must copy the copyright notice from the top of the file, adjust it appropriately
+to include your name in the copyright list.  FAILURE TO ATTRIBUTE CODE DRAWN FROM TEST.C WILL
+RESULT IN 0, and will be treated as any other form of academic misconduct.  Ask me if you
+are unsure with how to comply with this requirement.
+
+Recommended programming environment
+-----------------------------------
+
+You should do your software development using the CSEM UNIX systems.  YOu can install PUTTY.EXE
+on Windows to log in remotely from home, or you can login in the lab.  ALL SUPPORT MATERIALS ARE
+BASED ON DEVELOPING YOUR SOFTWARE THIS WAY.  Every year a few students ignore this advice and
+try to use some Windows-based software development environment, and it almost invariably leads
+to more hurt and pain, especially when they submit their solution only to find that IT DOESN'T
+WORK ON THE UNIX SYSTEMS, WHICH IS WHERE I WILL BE MARKING, AND THEY GET ZERO.
+
+The workflow for software development is to edit your source files using any normal UNIX text
+editor, e.g., pico, emacs or vi, and then compile and test the programme using the commands I
+described above.
+
+EDITING THE SOURCE FILES USING MICROSOFT WINDOWS BASED EDITORS IS A RECIPE FOR PAIN AND
+SUFFERING because they put the wrong end-of-line markers in the files, which can create all
+sorts of subtle (and not so subtle) problems.
+
+If you have a Mac, it is relatively safe to develop locally on that using Aquamacs as the editor
+and to compile your program (press escape then x, then type the word compile and hit enter, and
+it will compile in emacs, and you will be able to click on errors to jump to the relevant lines
+of source code) and using Terminal to run the program.  The same applies to Linux, FreeBSD and
+probably to other UNIX-based environments.  HOWEVER ALWAYS TEST ON THE CSEM UNIX SYSTEMS BEFORE
+SUBMITTING TO AVOID UNPLEASANT SURPRISES, LIKE GETTING ZERO IF YOUR PROGRAM DOESN'T WORK ON THERE.
 
 Useful resources about IRC
 --------------------------
