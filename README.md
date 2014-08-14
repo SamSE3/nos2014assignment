@@ -74,6 +74,12 @@ of source code) and using Terminal to run the program.  The same applies to Linu
 probably to other UNIX-based environments.  HOWEVER ALWAYS TEST ON THE CSEM UNIX SYSTEMS BEFORE
 SUBMITTING TO AVOID UNPLEASANT SURPRISES, LIKE GETTING ZERO IF YOUR PROGRAM DOESN'T WORK ON THERE.
 
+You are allowed to program in a language other than C if you wish, provided that you still use
+similar networking and concurrency primitives, and that your submission still works when run
+with the test program on the CSEM UNIX environment.  I recommend against using Java, since 
+that will rob you of the opportunity to learn basic C programming, which you will need if you
+go on to SE3 next year in any case.
+
 Useful resources about IRC
 --------------------------
 
