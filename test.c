@@ -41,7 +41,7 @@ pid_t student_pid=-1;
 int student_port;
 int success=0;
 
-char *gradeOf(int score)
+char *gradeOf(int score) // works out grade
 {
   if (score<50) return "F";
   if (score<65) return "P";
@@ -50,51 +50,51 @@ char *gradeOf(int score)
   return "HD";
 }
 
-int create_listen_socket(int port)
+int create_listen_socket(int port) // listen on port for incomming connection
 {
-  int sock = socket(AF_INET,SOCK_STREAM,0);
-  if (sock==-1) return -1;
+  int sock = socket(AF_INET,SOCK_STREAM,0); //create a ipv4 socket (INET), TCP (SOCK_STREAM), 0 default protocol
+  if (sock==-1) return -1; //fails
 
   int on=1;
   if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (char *)&on, sizeof(on)) == -1) {
-    close(sock); return -1;
+    close(sock); return -1; // time out extra packets?
   }
-  if (ioctl(sock, FIONBIO, (char *)&on) == -1) {
-    close(sock); return -1;
+  if (ioctl(sock, FIONBIO, (char *)&on) == -1) { //File I/O non blockin I/O
+    close(sock); return -1; //nothing to get close
   }
   
   /* Bind it to the next port we want to try. */
   struct sockaddr_in address;
-  bzero((char *) &address, sizeof(address));
-  address.sin_family = AF_INET;
-  address.sin_addr.s_addr = INADDR_ANY;
-  address.sin_port = htons(port);
-  if (bind(sock, (struct sockaddr *) &address, sizeof(address)) == -1) {
-    close(sock); return -1;
+  bzero((char *) &address, sizeof(address)); //write zeros to address ... clear it
+  address.sin_family = AF_INET; // ipv4
+  address.sin_addr.s_addr = INADDR_ANY; // accept any connection on this port
+  address.sin_port = htons(port); // orders the bytes to go out on the network (high or low byte consistancy)
+  if (bind(sock, (struct sockaddr *) &address, sizeof(address)) == -1) { // bind the socket and address togeather
+    close(sock); return -1; // send to address recived by this address
   } 
 
-  if (listen(sock, 20) != -1) return sock;
-
+  if (listen(sock, 20) != -1) return sock;// listen to 20 connections in the queue
+ //return the sock which is ready of connections
   close(sock);
   return -1;
 }
 
-int accept_incoming(int sock)
+int accept_incoming(int sock) //try to accept an incoming connection
 {
-  struct sockaddr addr;
-  unsigned int addr_len = sizeof addr;
-  int asock;
-  if ((asock = accept(sock, &addr, &addr_len)) != -1) {
+  struct sockaddr addr; // hold the remote address
+  unsigned int addr_len = sizeof addr; // the size of the address
+  int asock; // hold socket number
+  if ((asock = accept(sock, &addr, &addr_len)) != -1) { // return an accepted connection
     return asock;
   }
 
   return -1;
 }
 
-int connect_to_port(int port)
+int connect_to_port(int port) //connect to port on the local machine
 {
   struct hostent *hostent;
-  hostent = gethostbyname("127.0.0.1");
+  hostent = gethostbyname("127.0.0.1"); // the loopback 'local' address
   if (!hostent) {
     return -1;
   }
@@ -103,7 +103,7 @@ int connect_to_port(int port)
   addr.sin_family = AF_INET;     
   addr.sin_port = htons(port);   
   addr.sin_addr = *((struct in_addr *)hostent->h_addr);
-  bzero(&(addr.sin_zero),8);     
+  bzero(&(addr.sin_zero),8);      
 
   int sock=socket(AF_INET, SOCK_STREAM, 0);
   if (sock==-1) {
@@ -122,26 +122,27 @@ int connect_to_port(int port)
 int read_from_socket(int sock,unsigned char *buffer,int *count,int buffer_size,
 		     int timeout)
 {
-  fcntl(sock,F_SETFL,fcntl(sock, F_GETFL, NULL)|O_NONBLOCK);
+  fcntl(sock,F_SETFL,fcntl(sock, F_GETFL, NULL)|O_NONBLOCK); // make sure sock wont block
 
 
   int t=time(0)+timeout;
-  if (*count>=buffer_size) return 0;
+  if (*count>=buffer_size) return 0; // got some data return zero
   int r=read(sock,&buffer[*count],buffer_size-*count);
+  //address of the 0th elem in the array buffer
   while(r!=0) {
     if (r>0) {
       (*count)+=r;
       break;
     }
     r=read(sock,&buffer[*count],buffer_size-*count);
-    if (r==-1&&errno!=EAGAIN) {
+    if (r==-1&&errno!=EAGAIN) { // no double error
       perror("read() returned error. Stopping reading from socket.");
       return -1;
-    } else usleep(100000);
+    } else usleep(100000); // sleep 
     // timeout after a few seconds of nothing
-    if (time(0)>=t) break;
+    if (time(0)>=t) break; //check the timeout
   }
-  buffer[*count]=0;
+  buffer[*count]=0; //null the end of the string
   return 0;
 }
 
@@ -149,9 +150,9 @@ int launch_student_programme(const char *executable)
 {
   // Find a free TCP port for the student programme to listen on
   // that is not currently in use.
-  student_port=(getpid()|0x8000)&0xffff;
+  student_port=(getpid()|0x8000)&0xffff; //process id or 80000 and make sure is <64k
   int portclear=0;
-  while(!portclear&&(student_port<65536)) {
+  while(!portclear&&(student_port<65536)) { // all go get a clear port no
     int sock=connect_to_port(student_port);
     if (sock==-1) portclear=1; 
     else close(sock);
@@ -159,14 +160,14 @@ int launch_student_programme(const char *executable)
   fprintf(stderr,"Port %d is available for use by student programme.\n",
 	  student_port);
 
-  pid_t child_pid = fork();
+  pid_t child_pid = fork(); // now to programs
 
   if (child_pid==-1) {
     perror("fork"); return -1;
   }
   char port[128];
-  snprintf(port,128,"%d",student_port);
-  const char *const args[]={executable,port,NULL,NULL};
+  snprintf(port,128,"%d",student_port); //
+  const char *const args[]={executable,port,NULL,NULL}; //
 
   if (!child_pid) {
     // as the child: so exec() to the student's program
@@ -182,7 +183,7 @@ int launch_student_programme(const char *executable)
   return 0;
 }
 
-int test_listensonport()
+int test_listensonport() // see if program will listen on a port
 {
   /* Test that student programme accepts a connection on the port */
   int i;
