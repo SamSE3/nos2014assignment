@@ -5,8 +5,6 @@
       <in>sample.c</in>
       <in>test.c</in>
     </df>
-    <df root="." name="1">
-    </df>
   </logicalFolder>
   <projectmakefile>Makefile</projectmakefile>
   <confs>
@@ -49,7 +47,7 @@
         </runcommandpicklist>
         <runcommand>./test ./sample</runcommand>
         <rundir>.</rundir>
-        <buildfirst>false</buildfirst>
+        <buildfirst>true</buildfirst>
         <terminal-type>0</terminal-type>
         <remove-instrumentation>0</remove-instrumentation>
         <environment>
