@@ -164,9 +164,8 @@ int handle_connection(int fd) {
             //printf("the command is %.*s\n", possComLength, buffer);
         }
          */
-
+        
         buffer[length] = 0;
-
         if (strncasecmp("QUIT", (char*) buffer, 4) == 0) {
             // client has said they are going away
             // needed to avoid SIGPIPE and the program will be killed on socket read
@@ -175,15 +174,15 @@ int handle_connection(int fd) {
             close(fd);
             return 0;
         }
-
+        printf("the command is %s\n",buffer); 
         if (strncasecmp("JOIN", (char*) buffer, 4) == 0) {
-            if (state == 3) {
+            if (state != 3) {
                 snprintf(msg, 1024, ":myserver.com 241 * :JOIN command sent before registration\n");
                 write(fd, msg, strlen(msg));
             }
             //@todo handle legit join here
         } else if (strncasecmp("PRIVMSG", (char*) buffer, 7) == 0) {
-            if (state == 3) {
+            if (state != 3) {
                 snprintf(msg, 1024, ":myserver.com 241 * :PRIVMSG command sent before registration\n");
                 write(fd, msg, strlen(msg));
             }
