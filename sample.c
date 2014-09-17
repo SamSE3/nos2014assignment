@@ -58,9 +58,9 @@ struct client_thread {
 };
 
 //holds the client threads
-#define MAX_CLIENTS=1024;
-//struct 
-client_thread threads[MAX_CLIENTS];
+#define MAX_CLIENTS 50
+
+struct client_thread threads[MAX_CLIENTS];
 
 pthread_rwlock_t message_log_lock;
 
@@ -131,6 +131,9 @@ int accept_incoming(int sock) {
     return -1;
 }
 
+#define DEAD 1
+#define ALIVE 2
+
 int connection_count = 0;
 
 int connection_main() = 0;
@@ -139,20 +142,30 @@ int client_thread_entry(void * arg) {
     struct client_thread *t = arg;
 
     //run the thread
+    t->state = DEAD;
     connection_main(t->fd);
+    return NULL;    
 }
 
+int client_count=0;
 int handle_connection(int fd) {
-    if (client_count >= MAX_CLIENTS) {
+    
+    int i;
+    for(i=0; i<client_count; i++) {
+        if(threads[i].state==DEAD) break;
+    }
+       
+    if (i >= MAX_CLIENTS) {
         write(fd, "QUIT: too many connections:\n", 29);
         close(fd);
         return -1;
     }
+    
     //wipe out the structure before using it
-    bzero(thread[client_count].sizeof (struct client_thread));
+    bzero(threads[client_count].sizeof (struct client_thread));
     threads[client_count].fd = fd;
     threads[client_count].thread_id = client_count;
-    if (pthread_create(&threads[client_count].thread, null,
+    if (pthread_create(&threads[client_count].thread, NULL,
             client_thread_entry, &threads[client_count])) {
 
     }
