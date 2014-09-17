@@ -57,6 +57,11 @@ struct client_thread {
     int next_message;
 };
 
+//holds the client threads
+#define MAX_CLIENTS=1024;
+//struct 
+client_thread threads[MAX_CLIENTS];
+
 pthread_rwlock_t message_log_lock;
 
 int read_from_socket(int sock, unsigned char *buffer, int *count, int buffer_size,
@@ -130,8 +135,29 @@ int connection_count = 0;
 
 int connection_main() = 0;
 
+int client_thread_entry(void * arg) {
+    struct client_thread *t = arg;
+
+    //run the thread
+    connection_main(t->fd);
+}
+
 int handle_connection(int fd) {
-    connection_main(fd);
+    if (client_count >= MAX_CLIENTS) {
+        write(fd, "QUIT: too many connections:\n", 29);
+        close(fd);
+        return -1;
+    }
+    //wipe out the structure before using it
+    bzero(thread[client_count].sizeof (struct client_thread));
+    threads[client_count].fd = fd;
+    threads[client_count].thread_id = client_count;
+    if (pthread_create(&threads[client_count].thread, null,
+            client_thread_entry, &threads[client_count])) {
+
+    }
+    //connection_main(fd);
+    return 0;
 }
 
 int connection_main(int fd) {
