@@ -128,14 +128,20 @@ int accept_incoming(int sock) {
 
 int connection_count = 0;
 
+int connection_main() = 0;
+
 int handle_connection(int fd) {
+    connection_main(fd);
+}
+
+int connection_main(int fd) {
     //printf("I have now seen %d connections so far.\n",++connection_count);
     // the server connects
     char msg[1024];
     snprintf(msg, 1024, ":myserver.com 020 * :hello\n");
     write(fd, msg, strlen(msg));
-    
-    
+
+
     unsigned char buffer[8192];
     int length = 0;
     int state = 0;
