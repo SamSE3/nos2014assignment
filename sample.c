@@ -44,7 +44,10 @@ struct client_thread {
     int thread_id;
     int fd;
 
+    int nicknamelength;
     char nickname[32];
+    int usernamelength;
+    char username[32];
 
     int state;
     int user_command_seen;
@@ -136,7 +139,7 @@ int accept_incoming(int sock) {
 
 int connection_count = 0;
 
-int connection_main() = 0;
+//int connection_main(int fd);
 
 int client_thread_entry(void * arg) {
     struct client_thread *t = arg;
@@ -144,49 +147,50 @@ int client_thread_entry(void * arg) {
     //run the thread
     t->state = DEAD;
     connection_main(t->fd);
-    return NULL;    
+    return NULL;
 }
 
-int client_count=0;
+int client_count = 0;
+
 int handle_connection(int fd) {
-    
+
     int i;
-    for(i=0; i<client_count; i++) {
-        if(threads[i].state==DEAD) break;
+    for (i = 0; i < client_count; i++) {
+        if (threads[i].state == DEAD) break;
     }
-       
+
     if (i >= MAX_CLIENTS) {
         write(fd, "QUIT: too many connections:\n", 29);
         close(fd);
         return -1;
     }
-    
+
     //wipe out the structure before using it
-    bzero(threads[client_count].sizeof (struct client_thread));
-    threads[client_count].fd = fd;
-    threads[client_count].thread_id = client_count;
-    if (pthread_create(&threads[client_count].thread, NULL,
-            client_thread_entry, &threads[client_count])) {
+    bzero(&threads[i], sizeof (struct client_thread));
+    threads[i].fd = fd;
+    threads[i].thread_id = i;
+    if (pthread_create(&threads[i].thread, NULL,
+            client_thread_entry, &threads[i])) {
 
     }
     //connection_main(fd);
     return 0;
 }
+int connection_main(struct client_thread* t);
 
-int connection_main(int fd) {
+int connection_main(struct client_thread* t) {
     //printf("I have now seen %d connections so far.\n",++connection_count);
     // the server connects
     char msg[1024];
     snprintf(msg, 1024, ":myserver.com 020 * :hello\n");
-    write(fd, msg, strlen(msg));
-
+    write(t->fd, msg, strlen(msg));
 
     unsigned char buffer[8192];
     int length = 0;
     int state = 0;
-    unsigned char nickname[64];
+    unsigned char nickname[32];
     int nicknamelength = 0;
-    unsigned char username[64];
+    unsigned char username[32];
     int usernamelength = 0;
     memset(nickname, 0, 64);
     memset(username, 0, 64);
@@ -203,15 +207,14 @@ int connection_main(int fd) {
 
     while (1) {
         length = 0;
-        read_from_socket(fd, buffer, &length, 8192, 5);
+        read_from_socket(t->fd, buffer, &length, 8192, 5);
         if (length == 0) {
             snprintf(msg, 1024, "ERROR :Closing Link: Connection timed out (bye bye)\n");
-            write(fd, msg, strlen(msg));
-            close(fd);
+            write(t->fd, msg, strlen(msg));
+            close(t->fd);
             return 0;
         }
         buffer[length - 1] = 0; //remove the end line char
-
 
         /*
         int possComLength = (int) strchr(buffer, ' ');
@@ -222,32 +225,30 @@ int connection_main(int fd) {
         }
          */
 
-
         if (strncasecmp("QUIT", (char*) buffer, 4) == 0) {
             // client has said they are going away
             // needed to avoid SIGPIPE and the program will be killed on socket read
             snprintf(msg, 1024, "ERROR :Closing Link: %s[%s@client.example.com] (I Quit)\n", nickname, username);
-            write(fd, msg, strlen(msg));
-            close(fd);
+            write(t->fd, msg, strlen(msg));
+            close(t->fd);
             return 0;
         }
         printf("the command is %s\n", buffer);
         if (strncasecmp("JOIN", (char*) buffer, 4) == 0) {
             if (state == 3) {
-
+                //@todo handle legit join here
             } else {
                 snprintf(msg, 1024, ":myserver.com 241 %s :JOIN command sent before registration\n", nickname);
-                write(fd, msg, strlen(msg));
+                write(t->fd, msg, strlen(msg));
             }
-            //@todo handle legit join here
+
         } else if (strncasecmp("PRIVMSG", (char*) buffer, 7) == 0) {
             if (state == 3) {
-
+                //@todo handle legit private message here
             } else {
                 snprintf(msg, 1024, ":myserver.com 241 %s :PRIVMSG command sent before registration\n", nickname);
-                write(fd, msg, strlen(msg));
+                write(t->fd, msg, strlen(msg));
             }
-            //@todo handle legit private message here
         } else if (strncasecmp("PASS", (char*) buffer, 4) == 0) { // state is ignored?
             if (state == 0) {
                 state++;
@@ -276,37 +277,32 @@ int connection_main(int fd) {
 
                 snprintf(msg, 1024, ":myserver.com 001 %s :Welcome to the Internet Relay Network %s!~%s@client.myserver.com\n", nickname, nickname, username);
                 printf(":myserver.com 001 %s :Welcome to the Internet Relay Network %s!~%s@client.myserver.com\n", nickname, nickname, username);
-                write(fd, msg, strlen(msg));
+                write(t->fd, msg, strlen(msg));
                 snprintf(msg, 1024, ":myserver.com 002 %s :Your host is myserver.com, running version 1.0\n", nickname);
-                write(fd, msg, strlen(msg));
+                write(t->fd, msg, strlen(msg));
                 snprintf(msg, 1024, ":myserver.com 003 %s :This server was created a few seconds ago\n", nickname);
-                write(fd, msg, strlen(msg));
+                write(t->fd, msg, strlen(msg));
                 snprintf(msg, 1024, ":myserver.com 004 %s :Your host is myserver.com, running version 1.0\n", nickname);
-                write(fd, msg, strlen(msg));
+                write(t->fd, msg, strlen(msg));
                 snprintf(msg, 1024, ":myserver.com 253 %s :some statistics\n", nickname);
-                write(fd, msg, strlen(msg));
+                write(t->fd, msg, strlen(msg));
                 snprintf(msg, 1024, ":myserver.com 254 %s :some more statistics\n", nickname);
-                write(fd, msg, strlen(msg));
+                write(t->fd, msg, strlen(msg));
                 snprintf(msg, 1024, ":myserver.com 255 %s :even some more statistics\n", nickname);
-                write(fd, msg, strlen(msg));
+                write(t->fd, msg, strlen(msg));
 
             }
             if (state == 1) {
                 snprintf(msg, 1024, ":myserver.com 241 * :USER command sent before password (PASS *)\n");
-                write(fd, msg, strlen(msg));
+                write(t->fd, msg, strlen(msg));
             } else if (state == 0) {
                 snprintf(msg, 1024, ":myserver.com 241 * :USER command sent before password (PASS *) and nickname (NICK aNickName)\n");
-                write(fd, msg, strlen(msg));
+                write(t->fd, msg, strlen(msg));
             }
         }
-
-
-
-
     }
 
-
-    close(fd);
+    close(t->fd);
     return 0;
 }
 
