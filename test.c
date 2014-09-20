@@ -40,6 +40,7 @@
 pid_t student_pid = -1;
 int student_port;
 int success = 0;
+int connections = 1000;
 
 char *gradeOf(int score) // works out grade
 {
@@ -209,8 +210,7 @@ int test_acceptmultipleconnections() {
     /* Test that student programme accepts 1,000 successive connections.
        Further test that it can do so within a minute. */
     int start_time = time(0);
-    int i;
-    int connections = 100;
+    int i;    
     for (i = 0; i <= connections; i++) { //@todo revert back to 1000 for 100 connections
         int sock = connect_to_port(student_port);
         // Be merciful with student programs that are too slow to take 1,000 connections

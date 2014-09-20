@@ -68,12 +68,11 @@ struct client_thread {
     unsigned char buffer[8192];
     int buffer_length;
 
-
     int next_message;
 };
 
 //defines the maximum client threads
-#define MAX_CLIENTS 50
+#define MAX_CLIENTS 500
 
 //define the dead and alive thread states ... no longer relied on
 #define DEAD 1
@@ -88,11 +87,11 @@ int thread_stack_size = 0; // also the connection count
 
 // a lock for the shared thread stack
 pthread_rwlock_t aval_thread_stack_lock;
-
-// a lock for messages?
+// a lock for the message
 pthread_rwlock_t message_log_lock;
 
-int connection_main(struct client_thread* t);
+// the number of registered users 
+int reg_users = 0; //not used will make atomic
 
 /**
  * 
@@ -103,8 +102,7 @@ int connection_main(struct client_thread* t);
  * @param timeout
  * @return 
  */
-int read_from_socket(int sock, unsigned char *buffer, int *count, int buffer_size,
-        int timeout) {
+int read_from_socket(int sock, unsigned char *buffer, int *count, int buffer_size, int timeout) {
     fcntl(sock, F_SETFL, fcntl(sock, F_GETFL, NULL) | O_NONBLOCK); // make sure sock wont block
 
     int t = time(0) + timeout;
@@ -188,9 +186,10 @@ int accept_incoming(int sock) {
  * populate the thread stack with MAX_CLIENT thread_ids
  */
 void populate_stack() {
-    for (thread_stack_size = 0; thread_stack_size < MAX_CLIENTS; thread_stack_size++) {//0-49
-        aval_thread_stack[thread_stack_size] = MAX_CLIENTS - 1 - thread_stack_size; //49-0
+    for (thread_stack_size = 0; thread_stack_size < MAX_CLIENTS; thread_stack_size++) {//0-MAX_CLIENTS
+        aval_thread_stack[thread_stack_size] = MAX_CLIENTS - 1 - thread_stack_size; //MAX_CLIENTS-0
     }
+    printf("thread_stack_size is now %d\n", thread_stack_size);
 }
 
 /**
@@ -227,7 +226,141 @@ int push_stack(int thread_id) {
     return return_val;
 }
 
-//int connection_main(int fd);
+/**
+ * handles the client thread connections request messages and responses 
+ * @param t the client thread structure to handle
+ * @return 0 on the closer of a connection
+ */
+int connection_main(struct client_thread* t) {
+    //printf("I have now seen %d connections so far.\n",++connection_count);
+
+    snprintf(t->line, 1024, ":myserver.com 020 * :hello\n"); // wright output message to the line
+    write(t->fd, t->line, strlen(t->line)); // write the line to the file descriptor
+    //puts(t->line);
+    /*
+     * // old pre-threaded stuff
+        int state = 0;
+        unsigned char nickname[32];
+        int nicknamelength = 0;
+        unsigned char username[32];
+        int usernamelength = 0;
+        memset(t->nickname, '\0', 32);
+        memset(t->username, '\0', 32);
+        t->nickname[0] = '*';
+        t->username[0] = '*';
+     */
+    snprintf(t->nickname, 1024, "*");
+    snprintf(t->username, 1024, "*");
+
+    while (1) {
+        t->buffer_length = 0;
+        //t->line_length = 0;
+        memset(t->line, '\0', 1024);
+        //read the response from the socket
+        read_from_socket(t->fd, t->buffer, &t->buffer_length, 8192, 5);
+        //if an empty response (nothing in the buffer) reply with connection timed out
+        if (t->buffer_length == 0) {
+            snprintf(t->line, 1024, "ERROR :Closing Link: Connection timed out (bye bye)\n");
+            write(t->fd, t->line, strlen(t->line));
+            close(t->fd); //
+            return 0;
+        }
+        t->buffer[t->buffer_length - 1] = 0; //remove the end line char
+
+        if (strncasecmp("QUIT", (char*) t->buffer, 4) == 0) {
+            // client has said they are going away
+            // needed to avoid SIGPIPE and the program will be killed on socket read
+            snprintf(t->line, 1024, "ERROR :Closing Link: %s[%s@client.example.com] (I Quit)\n", t->nickname, t->username);
+            write(t->fd, t->line, strlen(t->line));
+            close(t->fd);
+            return 0;
+        }
+
+        if (strncasecmp("JOIN", (char*) t->buffer, 4) == 0) {
+            if (t->mode == 3) {
+                //@todo handle legit join here
+            } else {
+                snprintf(t->line, 1024, ":myserver.com 241 %s :JOIN command sent before registration\n", t->nickname);
+                write(t->fd, t->line, strlen(t->line));
+            }
+        } else if (strncasecmp("PRIVMSG", (char*) t->buffer, 7) == 0) {
+            if (t->mode == 3) {
+                //@todo handle legit private message here
+                // of form JOIN #twilight_zone
+            } else {
+                snprintf(t->line, 1024, ":myserver.com 241 %s :PRIVMSG command sent before registration\n", t->nickname);
+                write(t->fd, t->line, strlen(t->line));
+            }
+        } else if (strncasecmp("NICK", (char*) t->buffer, 4) == 0) {
+            /*
+                        if (t->mode == 0) {
+                            snprintf(t->line, 1024, ":myserver.com 241 * :NICK command sent before password (PASS *)\n");
+                            write(t->fd, t->line, strlen(t->line));
+                        }
+             */
+            t->mode += 2;
+            // copy the nickname off the buffer to the client_thread struct
+            t->nicknamelength = t->buffer_length - 7;
+            memcpy(t->nickname, &t->buffer[5], t->nicknamelength);
+
+        } else if (strncasecmp("USER", (char*) t->buffer, 4) == 0) {
+            if (t->mode == 2) {
+                t->mode++;
+                // @todo check username in unique ... add to list
+                // copy the nickname off the buffer to the client_thread struct
+                t->usernamelength = t->buffer_length - 7;
+                memcpy(t->username, &t->buffer[5], t->usernamelength);
+
+                //send welcome messages
+                snprintf(t->line, 1024, ":myserver.com 001 %s :Welcome to the Internet Relay Network %s!~%s@client.myserver.com\n", t->nickname, t->nickname, t->username);
+                printf("lineout :%s\n", t->line);
+                write(t->fd, t->line, strlen(t->line));
+                snprintf(t->line, 1024, ":myserver.com 002 %s :Your host is myserver.com, running version 1.0\n", t->nickname);
+                write(t->fd, t->line, strlen(t->line));
+                snprintf(t->line, 1024, ":myserver.com 003 %s :This server was created a few seconds ago\n", t->nickname);
+                write(t->fd, t->line, strlen(t->line));
+                snprintf(t->line, 1024, ":myserver.com 004 %s :Your host is myserver.com, running version 1.0\n", t->nickname);
+                write(t->fd, t->line, strlen(t->line));
+                snprintf(t->line, 1024, ":myserver.com 253 %s :I have %d users\n", t->nickname, reg_users);
+                write(t->fd, t->line, strlen(t->line));
+                snprintf(t->line, 1024, ":myserver.com 254 %s :I have %d connections %d\n", t->nickname, thread_stack_size, MAX_CLIENTS);
+                write(t->fd, t->line, strlen(t->line));
+                snprintf(t->line, 1024, ":myserver.com 255 %s :even some more statistics\n", t->nickname);
+                write(t->fd, t->line, strlen(t->line));
+                // :MyNickname MODE MyNickname :+i also?                
+            } else if (t->mode == 1) {
+                snprintf(t->line, 1024, ":myserver.com 241 * :USER command sent before password (PASS *)\n");
+                write(t->fd, t->line, strlen(t->line));
+            } else if (t->mode == 0) {
+                snprintf(t->line, 1024, ":myserver.com 241 * :USER command sent before password (PASS *) and nickname (NICK aNickName)\n");
+                write(t->fd, t->line, strlen(t->line));
+            }
+            // already set user name ... do nothing
+        } else if (strncasecmp("PASS", (char*) t->buffer, 4) == 0) {
+            //@todo handle message
+        } else if (strncasecmp("PASS", (char*) t->buffer, 4) == 0) {
+            if (t->mode == 0) {
+                t->mode++;
+                // there is no password ... continue
+            }
+            // already logged in ... do nothing        
+        }
+    }
+
+    close(t->fd);
+    return 0;
+}
+
+/*
+void handleBadState(int fd, char line[], int state, int expectedState) {
+    if (state == 1) {
+        snprintf(line, 1024, ":myserver.com 241 * :USER command sent before password (PASS *)\n");
+    } else if (state == 0) {
+        snprintf(line, 1024, ":myserver.com 241 * :USER command sent before password (PASS *) and nickname (NICK aNickName)\n");
+    }
+    write(fd, line, strlen(line));
+}
+ */
 
 /**
  * the entry point on the creation of a client thread
@@ -238,9 +371,10 @@ void* client_thread_entry(void * arg) {
     struct client_thread *t = arg;
 
     //run the thread
-    t->state = DEAD; // mark it as dead ? ... doesn't really matter
+    t->state = ALIVE; // mark it as alive ? ... doesn't really matter    
+    connection_main(t); // interact with the thread
     push_stack(t->thread_id); // push the thread id back onto the stack
-    connection_main(t); // 
+    t->state = DEAD; // mark it as dead ? ... doesn't really matter    
     return NULL;
 }
 
@@ -268,159 +402,10 @@ int handle_connection(int fd) {
     threads[thread_no].thread_id = thread_no;
     //create the thread
     pthread_create(&threads[thread_no].thread, NULL,
-            client_thread_entry, &threads[thread_no])
+            client_thread_entry, &threads[thread_no]);
 
     return 0;
 }
-
-/**
- * handles the client thread connections request messages and responses 
- * @param t the client thread structure to handle
- * @return 0 on the closer of a connection
- */
-int connection_main(struct client_thread* t) {
-    //printf("I have now seen %d connections so far.\n",++connection_count);
-    // the server connects
-    /*
-        char t->line[1024];
-     */
-
-    snprintf(t->line, 1024, ":myserver.com 020 * :hello\n"); // wright output message to the line
-    //printf("the line is %s\n", t->line);
-    write(t->fd, t->line, strlen(t->line)); // write the line to the handler
-    //puts(t->line);
-    /*
-        int state = 0;
-        unsigned char nickname[32];
-        int nicknamelength = 0;
-        unsigned char username[32];
-        int usernamelength = 0;
-     */
-    /*
-        memset(t->nickname, '\0', 32);
-        memset(t->username, '\0', 32);
-        t->nickname[0] = '*';
-        t->username[0] = '*';
-     */
-    snprintf(t->nickname, 1024, "*");
-    //printf("output %s", t->nickname);
-    snprintf(t->username, 1024, "*");
-    //memset(t->line, '\0', 1024);
-    /*
-     * states as defined by this program
-     * 0 unregistered
-     * 1 password received
-     * 2 nickname set
-     * 3 registered (username set)
-     */
-
-    while (1) {
-        t->buffer_length = 0;
-        //t->line_length = 0;
-        memset(t->line, '\0', 1024);
-        //read the response from the socket
-        read_from_socket(t->fd, t->buffer, &t->buffer_length, 8192, 5);
-        //if an empty response (nothing in the buffer) reply with connection timed out
-        if (t->buffer_length == 0) {
-            snprintf(t->line, 1024, "ERROR :Closing Link: Connection timed out (bye bye)\n");
-            write(t->fd, t->line, strlen(t->line));
-            close(t->fd); //
-            return 0;
-        }
-        t->buffer[t->buffer_length - 1] = 0; //remove the end line char
-
-        if (strncasecmp("QUIT", (char*) t->buffer, 4) == 0) {
-            // client has said they are going away
-            // needed to avoid SIGPIPE and the program will be killed on socket read
-            snprintf(t->line, 1024, "ERROR :Closing Link: %s[%s@client.example.com] (I Quit)\n", t->nickname, t->username);
-            write(t->fd, t->line, strlen(t->line));
-            close(t->fd);
-            return 0;
-        }
-
-        //printf("the command is %s with length %d\n", t->buffer, strlen(t->buffer));
-
-        if (strncasecmp("JOIN", (char*) t->buffer, 4) == 0) {
-            if (t->mode == 3) {
-                //@todo handle legit join here
-            } else {
-                snprintf(t->line, 1024, ":myserver.com 241 %s :JOIN command sent before registration\n", t->nickname);
-                write(t->fd, t->line, strlen(t->line));
-            }
-        } else if (strncasecmp("PRIVMSG", (char*) t->buffer, 7) == 0) {
-            if (t->mode == 3) {
-                //@todo handle legit private message here
-            } else {
-                snprintf(t->line, 1024, ":myserver.com 241 %s :PRIVMSG command sent before registration\n", t->nickname);
-                write(t->fd, t->line, strlen(t->line));
-            }
-        } else if (strncasecmp("PASS", (char*) t->buffer, 4) == 0) { // t->mode is ignored?
-            if (t->mode == 0) {
-                t->mode++;
-                // there is no password ... continue
-            }
-            //@todo handle legit private message here            
-        } else if (strncasecmp("NICK", (char*) t->buffer, 4) == 0) {
-            /*
-                        if (t->mode == 0) {
-                            snprintf(t->line, 1024, ":myserver.com 241 * :NICK command sent before password (PASS *)\n");
-                            write(t->fd, t->line, strlen(t->line));
-                        }
-             */
-            t->mode += 2;
-            t->nicknamelength = t->buffer_length - 7;
-            memcpy(t->nickname, &t->buffer[5], t->nicknamelength);
-            //printf("the t->buffer_length is %s\n", nickname);
-
-        } else if (strncasecmp("USER", (char*) t->buffer, 4) == 0) {
-            if (t->mode == 2) {
-                t->mode++;
-                // check username in unique
-                t->usernamelength = t->buffer_length - 7;
-                memcpy(t->username, &t->buffer[5], t->usernamelength);
-                //send welcome message
-
-                snprintf(t->line, 1024, ":myserver.com 001 %s :Welcome to the Internet Relay Network %s!~%s@client.myserver.com\n", t->nickname, t->nickname, t->username);
-                printf("lineout :%s\n", t->line);
-                write(t->fd, t->line, strlen(t->line));
-                snprintf(t->line, 1024, ":myserver.com 002 %s :Your host is myserver.com, running version 1.0\n", t->nickname);
-                write(t->fd, t->line, strlen(t->line));
-                snprintf(t->line, 1024, ":myserver.com 003 %s :This server was created a few seconds ago\n", t->nickname);
-                write(t->fd, t->line, strlen(t->line));
-                snprintf(t->line, 1024, ":myserver.com 004 %s :Your host is myserver.com, running version 1.0\n", t->nickname);
-                write(t->fd, t->line, strlen(t->line));
-                snprintf(t->line, 1024, ":myserver.com 253 %s :some statistics\n", t->nickname);
-                write(t->fd, t->line, strlen(t->line));
-                snprintf(t->line, 1024, ":myserver.com 254 %s :some more statistics\n", t->nickname);
-                write(t->fd, t->line, strlen(t->line));
-                snprintf(t->line, 1024, ":myserver.com 255 %s :even some more statistics\n", t->nickname);
-                write(t->fd, t->line, strlen(t->line));
-
-            }
-            if (t->mode == 1) {
-                snprintf(t->line, 1024, ":myserver.com 241 * :USER command sent before password (PASS *)\n");
-                write(t->fd, t->line, strlen(t->line));
-            } else if (t->mode == 0) {
-                snprintf(t->line, 1024, ":myserver.com 241 * :USER command sent before password (PASS *) and nickname (NICK aNickName)\n");
-                write(t->fd, t->line, strlen(t->line));
-            }
-        }
-    }
-
-    close(t->fd);
-    return 0;
-}
-
-/*
-void handleBadState(int fd, char line[], int state, int expectedState) {
-    if (state == 1) {
-        snprintf(line, 1024, ":myserver.com 241 * :USER command sent before password (PASS *)\n");
-    } else if (state == 0) {
-        snprintf(line, 1024, ":myserver.com 241 * :USER command sent before password (PASS *) and nickname (NICK aNickName)\n");
-    }
-    write(fd, line, strlen(line));
-}
- */
 
 int main(int argc, char **argv) {
     signal(SIGPIPE, SIG_IGN);
@@ -439,7 +424,7 @@ int main(int argc, char **argv) {
     pthread_rwlock_init(&aval_thread_stack_lock, NULL);
     // populate the stack with available threads 
     populate_stack();
-    
+
     while (1) {
         // try to accept an incoming connection
         int client_sock = accept_incoming(master_socket);
