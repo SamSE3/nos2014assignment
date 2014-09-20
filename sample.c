@@ -60,6 +60,8 @@ struct client_thread {
     // 2 nickname supplied
     // 3 username supplied ... registered
     int mode;
+
+    // the timeout length of the structure ... not required yet all are 5seconds
     time_t timeout;
 
     char line[1024];
@@ -72,7 +74,7 @@ struct client_thread {
 };
 
 //defines the maximum client threads
-#define MAX_CLIENTS 500
+#define MAX_CLIENTS 5000
 
 //define the dead and alive thread states ... no longer relied on
 #define DEAD 1
@@ -94,21 +96,26 @@ pthread_rwlock_t message_log_lock;
 int reg_users = 0; //not used will make atomic
 
 /**
- * 
- * @param sock
- * @param buffer
- * @param count
- * @param buffer_size
- * @param timeout
- * @return 
+ * Attempt to read data from a socket (sock) into a buffer (buffer)
+ * @param sock, the socket to read from
+ * @param buffer, pointer to a buffer to write data into
+ * @param count, pointer to the length of the buffer
+ * @param buffer_size, the total size or space avaliable for the buffer
+ * @param timeout, the amount of time the socket can be read whilst idle
+ * @return 0 if data is returned to the buffer otherwise -1 as a read error occured
  */
 int read_from_socket(int sock, unsigned char *buffer, int *count, int buffer_size, int timeout) {
-    fcntl(sock, F_SETFL, fcntl(sock, F_GETFL, NULL) | O_NONBLOCK); // make sure sock wont block
 
-    int t = time(0) + timeout;
-    if (*count >= buffer_size) return 0; // got some data return zero
+    fcntl(sock, F_SETFL, fcntl(sock, F_GETFL, NULL) | O_NONBLOCK); //set the socket flags to true if they already are or if not blocking i.e. set flags to non blocking 
+
+    int t = time(0) + timeout; // set the timeout time (timeout seconds from now)
+    if (*count >= buffer_size) { // got some data return zero
+        return 0;
+    }
+
+    // else read and continue reading from the socket util data is found
     int r = read(sock, &buffer[*count], buffer_size - *count);
-    //address of the 0th elem in the array t->buffer
+    //address of the 0th elem in the array buffer
     while (r != 0) {
         if (r > 0) {
             (*count) += r;
@@ -118,28 +125,39 @@ int read_from_socket(int sock, unsigned char *buffer, int *count, int buffer_siz
         if (r == -1 && errno != EAGAIN) { // no double error
             perror("read() returned error. Stopping reading from socket.");
             return -1;
-        } else usleep(100000); // sleep 
+        } else { // sleep 
+            usleep(100000);
+        }
         // timeout after a few seconds of nothing
-        if (time(0) >= t) break; //check the timeout
+        if (time(0) >= t) {
+            break;
+        } //check the timeout
     }
     buffer[*count] = 0; //null the end of the string
     return 0;
 }
 
 /**
- * 
- * @param port
- * @return 
+ * create a POSIX socket (a type of Berkeley socket) to listen in on a particular port
+ * @param port, the number of the port
+ * @return -1 if can't create a socket, can't set re-use addresses, 
+ *  can't set the file descriptor to nonblocking I/O, binding failed or can't listen to it
  */
 int create_listen_socket(int port) {
+    //open a socket stream
     int sock = socket(AF_INET, SOCK_STREAM, 0);
-    if (sock == -1) return -1;
+    if (sock == -1) {
+        return -1;
+    }
 
     int on = 1;
+    // try to set the sockets's options at the SOL_SOCKET api level so that address like 0.0.0.0:21 and 192.168.0.1:21 are not the same (0's not local wildcards?)
     if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (char *) &on, sizeof (on)) == -1) {
         close(sock);
         return -1;
     }
+    
+    // try to set the file descriptor to nonblocking I/O
     if (ioctl(sock, FIONBIO, (char *) &on) == -1) {
         close(sock);
         return -1;
@@ -147,18 +165,20 @@ int create_listen_socket(int port) {
 
     // Bind it to the next port we want to try. 
     struct sockaddr_in address;
-    bzero((char *) &address, sizeof (address));
-    address.sin_family = AF_INET;
-    address.sin_addr.s_addr = INADDR_ANY;
-    address.sin_port = htons(port);
+    //zero it
+    bzero((char *) &address, sizeof (address));    
+    address.sin_family = AF_INET; // set to use AF_INET internet protocol address
+    address.sin_addr.s_addr = INADDR_ANY; // receive all incomming packets
+    address.sin_port = htons(port); // set the port to the specified port in network byte order. 
+    
     if (bind(sock, (struct sockaddr *) &address, sizeof (address)) == -1) {
         // bind failed ... close the socket
         close(sock);
         return -1;
     }
-
-    // if can listen to the socket return it
+    
     if (listen(sock, 20) != -1) {
+        // can listen to the socket ... return it
         return sock;
     }
     //otherwise close the socket
