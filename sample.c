@@ -333,7 +333,7 @@ int connection_main(struct client_thread* t) {
 
                 //send welcome messages
                 snprintf(t->line, 1024, ":myserver.com 001 %s :Welcome to the Internet Relay Network %s!~%s@client.myserver.com\n", t->nickname, t->nickname, t->username);
-                printf("lineout :%s\n", t->line);
+                //printf("lineout :%s\n", t->line);
                 write(t->fd, t->line, strlen(t->line));
                 snprintf(t->line, 1024, ":myserver.com 002 %s :Your host is myserver.com, running version 1.0\n", t->nickname);
                 write(t->fd, t->line, strlen(t->line));
@@ -383,23 +383,23 @@ void handleBadState(int fd, char line[], int state, int expectedState) {
  */
 
 /**
- * the entry point on the creation of a client thread
+ * The entry point on the creation of a client thread
  * @param arg, the client thread structure
  * @return null on exit of the thread
  */
 void* client_thread_entry(void * arg) {
     struct client_thread *t = arg;
-
-    //run the thread
-    t->state = ALIVE; // mark it as alive ? ... doesn't really matter    
+    
+    t->state = ALIVE; // mark it as alive ? ... doesn't really matter        
     connection_main(t); // interact with the thread
-    push_stack(t->thread_id); // push the thread id back onto the stack
-    t->state = DEAD; // mark it as dead ? ... doesn't really matter    
+    t->state = DEAD; // mark it as dead ? ... doesn't really matter   
+    push_stack(t->thread_id); // push the thread id back onto the available thread ids stack
+    
     return NULL;
 }
 
 /**
- * try to turn the connection into a connection thread
+ * Try to turn the connection into a connection thread
  * @param fd the file descriptor of the accepted socket
  * @return 0 if the connection was successfully created or -1 if it was not
  */
@@ -408,8 +408,9 @@ int handle_connection(int fd) {
     // get an available thread
     int thread_no = trypop_stack();
 
-    // no threads were available ... so quit
+    // check if got a thread id
     if (thread_no == -1) {
+        // couldnt get a thread id
         write(fd, "QUIT: too many connections:\n", 29);
         close(fd);
         return -1;
@@ -435,6 +436,7 @@ int main(int argc, char **argv) {
         exit(-1);
     }
 
+    // set the master listening socket
     int master_socket = create_listen_socket(atoi(argv[1]));
 
     //set the file status flags, checking for blocking
@@ -442,17 +444,18 @@ int main(int argc, char **argv) {
 
     // initialise the available thread stack lock
     pthread_rwlock_init(&aval_thread_stack_lock, NULL);
-    // populate the stack with available threads 
+    
+    // populate the available thread id stack with ids
     populate_stack();
 
     while (1) {
         // try to accept an incoming connection
         int client_sock = accept_incoming(master_socket);
         // if there is a connection ... handle it
-        if (client_sock != -1) {
-            // close(client_sock);
+        if (client_sock != -1) {            
             handle_connection(client_sock);
         }
+        // close(client_sock);
     }
     //destroy the available thread stack lock
     pthread_rwlock_destroy(&aval_thread_stack_lock);
