@@ -74,7 +74,7 @@ struct client_thread {
 };
 
 //defines the maximum client threads
-#define MAX_CLIENTS 5000
+#define MAX_CLIENTS 100
 
 //define the dead and alive thread states ... no longer relied on
 #define DEAD 1
@@ -156,7 +156,7 @@ int create_listen_socket(int port) {
         close(sock);
         return -1;
     }
-    
+
     // try to set the file descriptor to nonblocking I/O
     if (ioctl(sock, FIONBIO, (char *) &on) == -1) {
         close(sock);
@@ -166,17 +166,17 @@ int create_listen_socket(int port) {
     // Bind it to the next port we want to try. 
     struct sockaddr_in address;
     //zero it
-    bzero((char *) &address, sizeof (address));    
+    bzero((char *) &address, sizeof (address));
     address.sin_family = AF_INET; // set to use AF_INET internet protocol address
     address.sin_addr.s_addr = INADDR_ANY; // receive all incomming packets
     address.sin_port = htons(port); // set the port to the specified port in network byte order. 
-    
+
     if (bind(sock, (struct sockaddr *) &address, sizeof (address)) == -1) {
         // bind failed ... close the socket
         close(sock);
         return -1;
     }
-    
+
     if (listen(sock, 20) != -1) {
         // can listen to the socket ... return it
         return sock;
@@ -187,7 +187,7 @@ int create_listen_socket(int port) {
 }
 
 /**
- * try to accept an in coming socket
+ * Try to accept an in coming socket
  * @param sock the socket to try to accept
  * @return file descriptor of the accepted socket or -1 if an error occurred
  */
@@ -203,7 +203,7 @@ int accept_incoming(int sock) {
 }
 
 /**
- * populate the thread stack with MAX_CLIENT thread_ids
+ * Populate the thread stack with MAX_CLIENT thread_ids
  */
 void populate_stack() {
     for (thread_stack_size = 0; thread_stack_size < MAX_CLIENTS; thread_stack_size++) {//0-MAX_CLIENTS
@@ -213,7 +213,7 @@ void populate_stack() {
 }
 
 /**
- * try to pop the first available thread of the available thread stack
+ * Try to pop the first available thread of the available thread stack
  * @return an available thread_id or -1 if none are available
  */
 int trypop_stack() {
@@ -229,7 +229,7 @@ int trypop_stack() {
 }
 
 /**
- * pushes a released thread_id onto the available thread stack
+ * Pushes a released thread_id onto the available thread stack
  * @param thread_id, the thread id to add to the stack 
  * @return 0 if thread id was added to the stack
  */
@@ -246,17 +246,27 @@ int push_stack(int thread_id) {
     return return_val;
 }
 
+/*
+void handleBadState(int fd, char line[], int state, int expectedState) {
+    if (state == 1) {
+        snprintf(line, 1024, ":myserver.com 241 * :USER command sent before password (PASS *)\n");
+    } else if (state == 0) {
+        snprintf(line, 1024, ":myserver.com 241 * :USER command sent before password (PASS *) and nickname (NICK aNickName)\n");
+    }
+    write(fd, line, strlen(line));
+}
+ */
+
 /**
- * handles the client thread connections request messages and responses 
+ * Handle the client thread connections request messages and responses 
  * @param t the client thread structure to handle
- * @return 0 on the closer of a connection
+ * @return 0 the close of a connection
  */
 int connection_main(struct client_thread* t) {
     //printf("I have now seen %d connections so far.\n",++connection_count);
 
     snprintf(t->line, 1024, ":myserver.com 020 * :hello\n"); // wright output message to the line
     write(t->fd, t->line, strlen(t->line)); // write the line to the file descriptor
-    //puts(t->line);
     /*
      * // old pre-threaded stuff
         int state = 0;
@@ -275,9 +285,9 @@ int connection_main(struct client_thread* t) {
     while (1) {
         t->buffer_length = 0;
         //t->line_length = 0;
-        memset(t->line, '\0', 1024);
+        //memset(t->line, '\0', 1024);
         //read the response from the socket
-        read_from_socket(t->fd, t->buffer, &t->buffer_length, 8192, 5);
+        read_from_socket(t->fd, t->buffer, &t->buffer_length, 8192, 10);
         //if an empty response (nothing in the buffer) reply with connection timed out
         if (t->buffer_length == 0) {
             snprintf(t->line, 1024, "ERROR :Closing Link: Connection timed out (bye bye)\n");
@@ -285,7 +295,9 @@ int connection_main(struct client_thread* t) {
             close(t->fd); //
             return 0;
         }
-        t->buffer[t->buffer_length - 1] = 0; //remove the end line char
+
+        //remove the end line char, couldn't do it if the buffer was empty
+        t->buffer[t->buffer_length - 1] = 0;
 
         if (strncasecmp("QUIT", (char*) t->buffer, 4) == 0) {
             // client has said they are going away
@@ -294,9 +306,7 @@ int connection_main(struct client_thread* t) {
             write(t->fd, t->line, strlen(t->line));
             close(t->fd);
             return 0;
-        }
-
-        if (strncasecmp("JOIN", (char*) t->buffer, 4) == 0) {
+        } else if (strncasecmp("JOIN", (char*) t->buffer, 4) == 0) {
             if (t->mode == 3) {
                 //@todo handle legit join here
             } else {
@@ -357,30 +367,21 @@ int connection_main(struct client_thread* t) {
             }
             // already set user name ... do nothing
         } else if (strncasecmp("PASS", (char*) t->buffer, 4) == 0) {
-            //@todo handle message
-        } else if (strncasecmp("PASS", (char*) t->buffer, 4) == 0) {
             if (t->mode == 0) {
                 t->mode++;
                 // there is no password ... continue
             }
             // already logged in ... do nothing        
+        } else {
+            printf("some other message received: %s", t->buffer);
+            //@todo handle message
         }
     }
 
+    // unreachable but here anyway
     close(t->fd);
     return 0;
 }
-
-/*
-void handleBadState(int fd, char line[], int state, int expectedState) {
-    if (state == 1) {
-        snprintf(line, 1024, ":myserver.com 241 * :USER command sent before password (PASS *)\n");
-    } else if (state == 0) {
-        snprintf(line, 1024, ":myserver.com 241 * :USER command sent before password (PASS *) and nickname (NICK aNickName)\n");
-    }
-    write(fd, line, strlen(line));
-}
- */
 
 /**
  * The entry point on the creation of a client thread
@@ -389,12 +390,12 @@ void handleBadState(int fd, char line[], int state, int expectedState) {
  */
 void* client_thread_entry(void * arg) {
     struct client_thread *t = arg;
-    
+
     t->state = ALIVE; // mark it as alive ? ... doesn't really matter        
     connection_main(t); // interact with the thread
     t->state = DEAD; // mark it as dead ? ... doesn't really matter   
     push_stack(t->thread_id); // push the thread id back onto the available thread ids stack
-    
+
     return NULL;
 }
 
@@ -410,7 +411,7 @@ int handle_connection(int fd) {
 
     // check if got a thread id
     if (thread_no == -1) {
-        // couldnt get a thread id
+        // couldn't get a thread id
         write(fd, "QUIT: too many connections:\n", 29);
         close(fd);
         return -1;
@@ -418,7 +419,7 @@ int handle_connection(int fd) {
 
     //wipe out the structure before reusing it    
     bzero(&threads[thread_no], sizeof (struct client_thread));
-    // set the threads file description
+    // set the threads file description & id
     threads[thread_no].fd = fd;
     threads[thread_no].thread_id = thread_no;
     //create the thread
@@ -444,7 +445,7 @@ int main(int argc, char **argv) {
 
     // initialise the available thread stack lock
     pthread_rwlock_init(&aval_thread_stack_lock, NULL);
-    
+
     // populate the available thread id stack with ids
     populate_stack();
 
@@ -452,7 +453,7 @@ int main(int argc, char **argv) {
         // try to accept an incoming connection
         int client_sock = accept_incoming(master_socket);
         // if there is a connection ... handle it
-        if (client_sock != -1) {            
+        if (client_sock != -1) {
             handle_connection(client_sock);
         }
         // close(client_sock);

@@ -211,7 +211,7 @@ int test_acceptmultipleconnections() {
        Further test that it can do so within a minute. */
     int start_time = time(0);
     int i;    
-    for (i = 0; i <= connections; i++) { //@todo revert back to 1000 for 100 connections
+    for (i = 0; i <= connections; i++) {
         int sock = connect_to_port(student_port);
         // Be merciful with student programs that are too slow to take 1,000 connections
         // coming in really fast.
