@@ -74,7 +74,7 @@ struct client_thread {
 };
 
 //defines the maximum client threads
-#define MAX_CLIENTS 100
+#define MAX_CLIENTS 5000
 
 //define the dead and alive thread states ... no longer relied on
 #define DEAD 1
@@ -85,7 +85,7 @@ struct client_thread threads[MAX_CLIENTS];
 
 // a stack to hold the unused threads
 int aval_thread_stack[MAX_CLIENTS];
-int thread_stack_size = 0; // also the connection count
+int aval_thread_stack_size = 0; // also the connection count
 
 // a lock for the shared thread stack
 pthread_rwlock_t aval_thread_stack_lock;
@@ -106,7 +106,8 @@ int reg_users = 0; //not used will make atomic
  */
 int read_from_socket(int sock, unsigned char *buffer, int *count, int buffer_size, int timeout) {
 
-    fcntl(sock, F_SETFL, fcntl(sock, F_GETFL, NULL) | O_NONBLOCK); //set the socket flags to true if they already are or if not blocking i.e. set flags to non blocking 
+    //set the socket flags to true if they already are or if not blocking i.e. set flags to non blocking 
+    fcntl(sock, F_SETFL, fcntl(sock, F_GETFL, NULL) | O_NONBLOCK); 
 
     int t = time(0) + timeout; // set the timeout time (timeout seconds from now)
     if (*count >= buffer_size) { // got some data return zero
@@ -151,7 +152,8 @@ int create_listen_socket(int port) {
     }
 
     int on = 1;
-    // try to set the sockets's options at the SOL_SOCKET api level so that address like 0.0.0.0:21 and 192.168.0.1:21 are not the same (0's not local wildcards?)
+    // try to set the sockets's options at the SOL_SOCKET api level so that 
+    // address like 0.0.0.0:21 and 192.168.0.1:21 are not the same (0's not local wildcards?)
     if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (char *) &on, sizeof (on)) == -1) {
         close(sock);
         return -1;
@@ -206,10 +208,10 @@ int accept_incoming(int sock) {
  * Populate the thread stack with MAX_CLIENT thread_ids
  */
 void populate_stack() {
-    for (thread_stack_size = 0; thread_stack_size < MAX_CLIENTS; thread_stack_size++) {//0-MAX_CLIENTS
-        aval_thread_stack[thread_stack_size] = MAX_CLIENTS - 1 - thread_stack_size; //MAX_CLIENTS-0
+    for (aval_thread_stack_size = 0; aval_thread_stack_size < MAX_CLIENTS; aval_thread_stack_size++) {//0-MAX_CLIENTS-1
+        aval_thread_stack[aval_thread_stack_size] = MAX_CLIENTS - 1 - aval_thread_stack_size; //MAX_CLIENTS-1-0 999 998 ... 1 0
     }
-    printf("thread_stack_size is now %d\n", thread_stack_size);
+    printf("aval_thread_stack_size is now %d\n", aval_thread_stack_size); 
 }
 
 /**
@@ -219,10 +221,11 @@ void populate_stack() {
 int trypop_stack() {
     int return_val;
     pthread_rwlock_wrlock(&aval_thread_stack_lock);
-    if (thread_stack_size == 0) { // all in use nothing to pop
+    if (aval_thread_stack_size == 0) { // all in use nothing to pop
         return_val = -1;
     } else { // pop the top value
-        return_val = aval_thread_stack[thread_stack_size--];
+        return_val = aval_thread_stack[aval_thread_stack_size];
+        aval_thread_stack_size--;
     }
     pthread_rwlock_unlock(&aval_thread_stack_lock);
     return return_val;
@@ -234,16 +237,11 @@ int trypop_stack() {
  * @return 0 if thread id was added to the stack
  */
 int push_stack(int thread_id) {
-    int return_val;
-    pthread_rwlock_wrlock(&aval_thread_stack_lock);
-    //if (thread_stack_size == MAX_CLIENTS) { // stack is full? impossible adding to many to the stack?
-    //    return_val = -1;
-    //} else { //set the top value in the stack
-    aval_thread_stack[thread_stack_size++] = thread_id;
-    return_val = 0;
-    //}
+    pthread_rwlock_wrlock(&aval_thread_stack_lock);    
+    aval_thread_stack[aval_thread_stack_size] = thread_id;
+    aval_thread_stack_size++;
     pthread_rwlock_unlock(&aval_thread_stack_lock);
-    return return_val;
+    return 0;
 }
 
 /*
@@ -287,7 +285,7 @@ int connection_main(struct client_thread* t) {
         //t->line_length = 0;
         //memset(t->line, '\0', 1024);
         //read the response from the socket
-        read_from_socket(t->fd, t->buffer, &t->buffer_length, 8192, 10);
+        read_from_socket(t->fd, t->buffer, &t->buffer_length, 8192, 5);
         //if an empty response (nothing in the buffer) reply with connection timed out
         if (t->buffer_length == 0) {
             snprintf(t->line, 1024, "ERROR :Closing Link: Connection timed out (bye bye)\n");
@@ -353,7 +351,7 @@ int connection_main(struct client_thread* t) {
                 write(t->fd, t->line, strlen(t->line));
                 snprintf(t->line, 1024, ":myserver.com 253 %s :I have %d users\n", t->nickname, reg_users);
                 write(t->fd, t->line, strlen(t->line));
-                snprintf(t->line, 1024, ":myserver.com 254 %s :I have %d connections %d\n", t->nickname, thread_stack_size, MAX_CLIENTS);
+                snprintf(t->line, 1024, ":myserver.com 254 %s :I have %d connections %d\n", t->nickname, aval_thread_stack_size, MAX_CLIENTS);
                 write(t->fd, t->line, strlen(t->line));
                 snprintf(t->line, 1024, ":myserver.com 255 %s :even some more statistics\n", t->nickname);
                 write(t->fd, t->line, strlen(t->line));
@@ -458,6 +456,7 @@ int main(int argc, char **argv) {
         }
         // close(client_sock);
     }
+    
     //destroy the available thread stack lock
     pthread_rwlock_destroy(&aval_thread_stack_lock);
 
