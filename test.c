@@ -40,7 +40,7 @@
 pid_t student_pid = -1;
 int student_port;
 int success = 0;
-int connections = 1000;
+int connections = 100;
 
 char *gradeOf(int score) // works out grade
 {
