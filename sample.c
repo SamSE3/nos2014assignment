@@ -76,13 +76,13 @@ struct client_thread {
 };
 
 //defines the maximum client threads
-#define MAX_CLIENTS 50
+#define MAX_CLIENTS 100
 
 //define the dead and alive thread states ... no longer relied on
 #define DEAD 1
 #define ALIVE 2
-#define REG_TIMEOUT 10
-#define NICK_TIMEOUT 10
+#define REG_TIMEOUT 120
+#define NICK_TIMEOUT 30
 
 // create an array of client threads
 struct client_thread threads[MAX_CLIENTS];
@@ -212,21 +212,21 @@ int accept_incoming(int sock) {
     return -1;
 }
 
-struct client_thread* get_client_thread_by_username(char* username, int usernamelength, int threadid) {
-    printf("this thread has username %s", (&threads[threadid])->username);
+struct client_thread* get_client_thread_by_nickname(char* nickname, int nicknamelength, int threadid) {
+    //printf("this thread has nickname %s\n", (&threads[threadid + 1])->nickname);
 
     int i;
     for (i = 0; i < MAX_CLIENTS; i++) {
         struct client_thread *t = &threads[i];
         if (t->state == ALIVE) {
-            printf("ALIVETHREAD username %s with tlen %d and want %.*s with unlen %d\n", t->username, t->usernamelength, usernamelength, username, usernamelength);
-            if (t->usernamelength == usernamelength) {
-                if (strncmp(username, (char *) t->username, t->usernamelength) == 0) {
+            //printf("ALIVETHREAD username %s with tlen %d and want %.*s with unlen %d\n", t->username, t->usernamelength, usernamelength, username, usernamelength);
+            if (t->nicknamelength == nicknamelength) {
+                if (strncmp(nickname, (char *) t->nickname, t->nicknamelength) == 0) {
                     return t;
                 }
             }
         } else {
-            printf("DEADTHREAD username %s with tlen %d and want %.*s with unlen %d\n", t->username, t->usernamelength, usernamelength, username, usernamelength);
+            //printf("DEADTHREAD username %s with tlen %d and want %.*s with unlen %d\n", t->username, t->usernamelength, usernamelength, username, usernamelength);
         }
     }
     return NULL;
@@ -310,7 +310,7 @@ int connection_main(struct client_thread* t) {
     t->timeout = 5; // give 5 seconds to live
     t->has_next_message = 0; //make sure there are no messages to be sent yet
 
-    snprintf(t->line, 1024, ":myserver.com 020 * :hello\n"); // wright output message to the line
+    snprintf(t->line, 28, ":myserver.com 020 * :hello\n\r"); // wright output message to the line
     write(t->fd, t->line, strlen(t->line)); // write the line to the file descriptor
     /*
      * // old pre-threaded stuff
@@ -328,18 +328,21 @@ int connection_main(struct client_thread* t) {
     while (1) {
         //printf(" fd for id %d is %d\n", t->thread_id, t->fd);
         t->buffer_length = 0;
-        char * buffer = (char*) t->buffer;
 
         //read the response from the socket, waiting until input or timeout
         read_from_socket(t->fd, t->buffer, &t->buffer_length, 8192, t->timeout, &t->has_next_message);
+        char * buffer = (char*) t->buffer;
+        int bufferlength = t->buffer_length;
+
         if (t->has_next_message == 1) {
-            write(t->fd, t->message, t->messagelength);
+            write(t->fd, t->message, strlen(t->message));
             t->has_next_message = 0;
+            //printf("reply printed '%.*s'\n", strlen(t->message), t->message);
             if (t->buffer_length == 0) { // continue reading
                 continue;
             }
         } else if (t->buffer_length == 0) { // nothing in the buffer ... must have timed out
-            snprintf(t->line, 1024, "ERROR :Closing Link: Connection timed out (bye bye)\n");
+            snprintf(t->line, 1024, "ERROR :Closing Link: Connection timed out (bye bye)\n\r");
             write(t->fd, t->line, strlen(t->line));
             close(t->fd); //
             return 0;
@@ -352,15 +355,16 @@ int connection_main(struct client_thread* t) {
         if (strncasecmp("QUIT", buffer, 4) == 0) {
             // client has said they are going away
             // needed to avoid SIGPIPE and the program will be killed on socket read
-            snprintf(t->line, 1024, "ERROR :Closing Link: %s[%s@client.example.com] (I Quit)\n", t->nickname, t->username);
+            snprintf(t->line, 1024, "ERROR :Closing Link: %s[%s@client.example.com] (I Quit)\n\r", t->nickname, t->username);
             write(t->fd, t->line, strlen(t->line));
             close(t->fd);
             return 0;
         } else if (strncasecmp("PONG", buffer, 4) == 0) {
             if (t->buffer_length == 6) {
                 continue;
-            } else {
+            } else { // adjust for any pong
                 buffer = buffer + 6;
+                bufferlength -= 6;
                 //printf("post Pong is: %s", buffer);
             }
             //keep alive message received ... do nothing
@@ -376,30 +380,36 @@ int connection_main(struct client_thread* t) {
         } else if (strncasecmp("PRIVMSG", buffer, 7) == 0) {
             if (t->mode == 3) {
 
+                //printf("buffer is %s", t->buffer);
                 int unstart = (int) buffer + 7 + 1; // address + 8
-                int usernamelength = (int) strchr((char*) unstart, ' ') - unstart; //length of the first word post space 
-                printf("username to send to %.*s\n", usernamelength, (char*) unstart); //print out the word                
+                int nicknamelength = (int) strchr((char*) unstart, ' ') - unstart; //length of the first word post space 
+                //printf("username to send to %.*s, length is %d\n", nicknamelength, (char*) unstart, nicknamelength); //print out the word                
 
-                int mstart = unstart + usernamelength + 1 + 1; //skip over the username, a space and the colon
-                int messagelength = t->buffer_length - mstart - (int) buffer - 2; //get the remaining buffer size (start includes the buffer address)
-                printf("message to send %.*s\n", messagelength, (char*) mstart);
+                int mstart = unstart + nicknamelength + 1 + 1; //skip over the username, a space and the colon
+                int messagelength = bufferlength - nicknamelength - 12; //get the remaining buffer size (start includes the buffer address)
+                //printf("message to send %.*s, length is %d\n", messagelength, (char*) mstart, messagelength);
 
-                struct client_thread* ct = get_client_thread_by_username((char*) unstart, usernamelength, t->thread_id);
+                //if (strncmp((char*) unstart, t->nickname, nicknamelength)) {
+                //    snprintf(t->line, 1024, ":myserver.com PRIVMSG %s :%.*s :aa\n", t->nickname, messagelength, (char*) mstart);
+                //    write(t->fd, t->line, strlen(t->line));
+                //} else {
+
+                struct client_thread* ct = get_client_thread_by_nickname((char*) unstart, nicknamelength, t->thread_id);
                 if (ct == NULL) {
-                    printf("got null?\n");
-                    snprintf(t->line, 1024, ":myserver.com 241 %s :PRIVMSG unknown username %.*s \n", t->nickname, usernamelength, (char*) unstart);
+                    //printf("got null?\n");
+                    snprintf(t->line, 1024, ":myserver.com 241 %s :PRIVMSG unknown username %.*s \n\r", t->nickname, nicknamelength, (char*) unstart);
                     write(t->fd, t->line, strlen(t->line));
                 } else {
-                    printf("k\n");
-                    //memcpy(ct->message, (char*) mstart, messagelength); //copy in the message
-                    printf("k1\n");
-                    ct->messagelength = messagelength; // copy its length
-                    printf("k2\n");
+                    //printf("nickname is %.*s of length %d\n", ct->nicknamelength, ct->nickname, ct->nicknamelength);
+                    messagelength = 22 + ct->nicknamelength + 2 + messagelength + ((strncasecmp("PONG", (char*) t-> buffer, 4) == 0) ? 3 : 2);
+                    snprintf(ct->message, messagelength, ":myserver.com PRIVMSG %s :%s\n\r", ct->nickname, (char*) mstart);
+                    ct->messagelength = messagelength; // copy its length                    
                     ct->has_next_message = 1; //say it has to send a message
-                    printf("k3\n");
+                    //printf("k3\n");
                 }
+                //}
             } else {
-                snprintf(t->line, 1024, ":myserver.com 241 %s :PRIVMSG command sent before registration\n", t->nickname);
+                snprintf(t->line, 1024, ":myserver.com 241 %s :PRIVMSG command sent before registration\n\r", t->nickname);
                 write(t->fd, t->line, strlen(t->line));
             }
         } else if (strncasecmp("NICK", buffer, 4) == 0) {
@@ -414,7 +424,7 @@ int connection_main(struct client_thread* t) {
             // copy the nickname off the buffer to the client_thread struct
             t->nicknamelength = t->buffer_length - 7;
             memcpy(t->nickname, t->buffer + 5, t->nicknamelength);
-
+            //printf("nickname for thread %d set to %s and should be %s\n", t->thread_id, t->nickname, t->buffer + 5);
         } else if (strncasecmp("USER", buffer, 4) == 0) {
             if (t->mode == 2) {
                 t->mode = 3;
@@ -423,27 +433,32 @@ int connection_main(struct client_thread* t) {
                 // copy the nickname off the buffer to the client_thread struct
                 t->usernamelength = t->buffer_length - 7;
                 memcpy(t->username, t->buffer + 5, t->usernamelength);
+                //printf("username for thread %d set to %s and should be %s\n", t->thread_id, t->username, t->buffer + 5);
                 //send welcome messages
-                snprintf(t->line, 1024, ":myserver.com 001 %s :Welcome to the Internet Relay Network %s!~%s@client.myserver.com\n", t->nickname, t->nickname, t->username);
+                snprintf(t->line, 1024,
+                        ":myserver.com 001 %s :Welcome to the Internet Relay Network %s!~%s@client.myserver.com\n\
+:myserver.com 002 %s :Your host is myserver.com, running version 1.0\n\
+:myserver.com 003 %s :This server was created a few seconds ago\n\
+:myserver.com 004 %s :Your host is myserver.com, running version 1.0\n\
+:myserver.com 253 %s :I have %d users\n\
+:myserver.com 254 %s :I have %d connections %d\n\
+:myserver.com 255 %s :even some more statistics\n\r"
+                        , t->nickname, t->nickname, t->username
+                        , t->nickname
+                        , t->nickname
+                        , t->nickname
+                        , t->nickname, reg_users
+                        , t->nickname, aval_thread_stack_size, MAX_CLIENTS
+                        , t->nickname
+                        );
                 write(t->fd, t->line, strlen(t->line));
-                snprintf(t->line, 1024, ":myserver.com 002 %s :Your host is myserver.com, running version 1.0\n", t->nickname);
-                write(t->fd, t->line, strlen(t->line));
-                snprintf(t->line, 1024, ":myserver.com 003 %s :This server was created a few seconds ago\n", t->nickname);
-                write(t->fd, t->line, strlen(t->line));
-                snprintf(t->line, 1024, ":myserver.com 004 %s :Your host is myserver.com, running version 1.0\n", t->nickname);
-                write(t->fd, t->line, strlen(t->line));
-                snprintf(t->line, 1024, ":myserver.com 253 %s :I have %d users\n", t->nickname, reg_users);
-                write(t->fd, t->line, strlen(t->line));
-                snprintf(t->line, 1024, ":myserver.com 254 %s :I have %d connections %d\n", t->nickname, aval_thread_stack_size, MAX_CLIENTS);
-                write(t->fd, t->line, strlen(t->line));
-                snprintf(t->line, 1024, ":myserver.com 255 %s :even some more statistics\n", t->nickname);
-                write(t->fd, t->line, strlen(t->line));
+
                 // :MyNickname MODE MyNickname :+i also?                
             } else if (t->mode == 1) {
-                snprintf(t->line, 1024, ":myserver.com 241 * :USER command sent before password (PASS *)\n");
+                snprintf(t->line, 1024, ":myserver.com 241 * :USER command sent before password (PASS *)\n\r");
                 write(t->fd, t->line, strlen(t->line));
             } else if (t->mode == 0) {
-                snprintf(t->line, 1024, ":myserver.com 241 * :USER command sent before password (PASS *) and nickname (NICK aNickName)\n");
+                snprintf(t->line, 1024, ":myserver.com 241 * :USER command sent before password (PASS *) and nickname (NICK aNickName)\n\r");
                 write(t->fd, t->line, strlen(t->line));
             }
             // already set user name ... do nothing
@@ -463,6 +478,7 @@ int connection_main(struct client_thread* t) {
 
     // unreachable but here anyway
     close(t->fd);
+
     return 0;
 }
 
