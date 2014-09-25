@@ -2,7 +2,7 @@
   Sample solution for NOS 2014 assignment: implement a simple multi-threaded 
   IRC-like chat service.
 
-  (C) Paul Gardner-Stephen 2014.
+  (C) Paul Gardner-Stephen and Samuel Deane 2014.
 
   This program is free software; you can redistribute it and/or
   modify it under the terms of the GNU General Public License
@@ -74,11 +74,13 @@ struct client_thread {
 };
 
 //defines the maximum client threads
-#define MAX_CLIENTS 5000
+#define MAX_CLIENTS 100
 
 //define the dead and alive thread states ... no longer relied on
 #define DEAD 1
 #define ALIVE 2
+#define REG_TIMEOUT 10
+#define NICK_TIMEOUT 10
 
 // create an array of client threads
 struct client_thread threads[MAX_CLIENTS];
@@ -99,22 +101,22 @@ int reg_users = 0; //not used will make atomic
  * Attempt to read data from a socket (sock) into a buffer (buffer)
  * @param sock, the socket to read from
  * @param buffer, pointer to a buffer to write data into
- * @param count, pointer to the length of the buffer
+ * @param count, pointer to the length of the buffer 
  * @param buffer_size, the total size or space avaliable for the buffer
  * @param timeout, the amount of time the socket can be read whilst idle
  * @return 0 if data is returned to the buffer otherwise -1 as a read error occured
  */
-int read_from_socket(int sock, unsigned char *buffer, int *count, int buffer_size, int timeout) {
+int read_from_socket(int sock, unsigned char *buffer, int *count, int buffer_size, int timeout, int next_message) {
 
     //set the socket flags to true if they already are or if not blocking i.e. set flags to non blocking 
-    fcntl(sock, F_SETFL, fcntl(sock, F_GETFL, NULL) | O_NONBLOCK); 
+    fcntl(sock, F_SETFL, fcntl(sock, F_GETFL, NULL) | O_NONBLOCK);
 
     int t = time(0) + timeout; // set the timeout time (timeout seconds from now)
     if (*count >= buffer_size) { // got some data return zero
         return 0;
     }
 
-    // else read and continue reading from the socket util data is found
+    // else read and continue reading from the socket until data is found
     int r = read(sock, &buffer[*count], buffer_size - *count);
     //address of the 0th elem in the array buffer
     while (r != 0) {
@@ -133,6 +135,10 @@ int read_from_socket(int sock, unsigned char *buffer, int *count, int buffer_siz
         if (time(0) >= t) {
             break;
         } //check the timeout
+
+        if (next_message) {
+            break;
+        }
     }
     buffer[*count] = 0; //null the end of the string
     return 0;
@@ -204,6 +210,16 @@ int accept_incoming(int sock) {
     return -1;
 }
 
+int get_client_thread_by_nickname(char* username) {
+    int i;
+    for (i = 0; i < MAX_CLIENTS - aval_thread_stack_size; i++) {
+        if (strcmp(username, (char *) (&(threads[i]))->nickname) == 0) {
+            return i;
+        }
+    }
+    return -1;
+}
+
 /**
  * Populate the thread stack with MAX_CLIENT thread_ids
  */
@@ -211,7 +227,7 @@ void populate_stack() {
     for (aval_thread_stack_size = 0; aval_thread_stack_size < MAX_CLIENTS; aval_thread_stack_size++) {//0-MAX_CLIENTS-1
         aval_thread_stack[aval_thread_stack_size] = MAX_CLIENTS - 1 - aval_thread_stack_size; //MAX_CLIENTS-1-0 999 998 ... 1 0
     }
-    printf("aval_thread_stack_size is now %d\n", aval_thread_stack_size); 
+    printf("aval_thread_stack_size is now %d\n", aval_thread_stack_size);
 }
 
 /**
@@ -224,8 +240,8 @@ int trypop_stack() {
     if (aval_thread_stack_size == 0) { // all in use nothing to pop
         return_val = -1;
     } else { // pop the top value
-        return_val = aval_thread_stack[aval_thread_stack_size];
         aval_thread_stack_size--;
+        return_val = aval_thread_stack[aval_thread_stack_size];
     }
     pthread_rwlock_unlock(&aval_thread_stack_lock);
     return return_val;
@@ -237,7 +253,7 @@ int trypop_stack() {
  * @return 0 if thread id was added to the stack
  */
 int push_stack(int thread_id) {
-    pthread_rwlock_wrlock(&aval_thread_stack_lock);    
+    pthread_rwlock_wrlock(&aval_thread_stack_lock);
     aval_thread_stack[aval_thread_stack_size] = thread_id;
     aval_thread_stack_size++;
     pthread_rwlock_unlock(&aval_thread_stack_lock);
@@ -255,13 +271,32 @@ void handleBadState(int fd, char line[], int state, int expectedState) {
 }
  */
 
+/*
+int possComLength = (int) strchr(buffer, ' ');
+if (possComLength != 0) {
+    possComLength += 1 - (int) &buffer[0];
+    //printf("the length is %d\n",possComLength);   
+    //printf("the command is %.*s\n", possComLength, buffer);
+}
+ */
+
 /**
  * Handle the client thread connections request messages and responses 
  * @param t the client thread structure to handle
  * @return 0 the close of a connection
  */
+
 int connection_main(struct client_thread* t) {
     //printf("I have now seen %d connections so far.\n",++connection_count);
+
+    // initial setup
+    snprintf(t->nickname, 1024, "*");
+    snprintf(t->username, 1024, "*");
+    t->nicknamelength = 1;
+    t->usernamelength = 1;
+    t->mode = 0; // make sure the mode (is set to unregistered no PASS, NICK or USER)
+    t->timeout = 5; // give 5 seconds to live
+
 
     snprintf(t->line, 1024, ":myserver.com 020 * :hello\n"); // wright output message to the line
     write(t->fd, t->line, strlen(t->line)); // write the line to the file descriptor
@@ -277,17 +312,16 @@ int connection_main(struct client_thread* t) {
         t->nickname[0] = '*';
         t->username[0] = '*';
      */
-    snprintf(t->nickname, 1024, "*");
-    snprintf(t->username, 1024, "*");
+
 
     while (1) {
+        //printf(" fd for id %d is %d\n", t->thread_id, t->fd);
         t->buffer_length = 0;
-        //t->line_length = 0;
-        //memset(t->line, '\0', 1024);
-        //read the response from the socket
-        read_from_socket(t->fd, t->buffer, &t->buffer_length, 8192, 5);
-        //if an empty response (nothing in the buffer) reply with connection timed out
-        if (t->buffer_length == 0) {
+        char * buffer = (char*) t->buffer;
+
+        //read the response from the socket, waiting until input or timeout
+        read_from_socket(t->fd, t->buffer, &t->buffer_length, 8192, t->timeout, t->next_message);
+        if (t->buffer_length == 0) { // nothing in the buffer ... must have timed out
             snprintf(t->line, 1024, "ERROR :Closing Link: Connection timed out (bye bye)\n");
             write(t->fd, t->line, strlen(t->line));
             close(t->fd); //
@@ -297,51 +331,69 @@ int connection_main(struct client_thread* t) {
         //remove the end line char, couldn't do it if the buffer was empty
         t->buffer[t->buffer_length - 1] = 0;
 
-        if (strncasecmp("QUIT", (char*) t->buffer, 4) == 0) {
+        if (strncasecmp("QUIT", buffer, 4) == 0) {
             // client has said they are going away
             // needed to avoid SIGPIPE and the program will be killed on socket read
             snprintf(t->line, 1024, "ERROR :Closing Link: %s[%s@client.example.com] (I Quit)\n", t->nickname, t->username);
             write(t->fd, t->line, strlen(t->line));
             close(t->fd);
             return 0;
-        } else if (strncasecmp("JOIN", (char*) t->buffer, 4) == 0) {
+        } else if (strncasecmp("PONG", buffer, 4) == 0) {
+            if (t->buffer_length == 6) {
+                continue;
+            } else {
+                buffer = buffer + 6;
+                //printf("post Pong is: %s", buffer);
+            }
+            //keep alive message received ... do nothing
+        }
+        if (strncasecmp("JOIN", buffer, 4) == 0) {
             if (t->mode == 3) {
                 //@todo handle legit join here
+                // of form JOIN #twilight_zone
             } else {
                 snprintf(t->line, 1024, ":myserver.com 241 %s :JOIN command sent before registration\n", t->nickname);
                 write(t->fd, t->line, strlen(t->line));
             }
-        } else if (strncasecmp("PRIVMSG", (char*) t->buffer, 7) == 0) {
+        } else if (strncasecmp("PRIVMSG", buffer, 7) == 0) {
             if (t->mode == 3) {
-                //@todo handle legit private message here
-                // of form JOIN #twilight_zone
+
+                int start = (int) buffer + 7 + 1; // address + 8
+                int usernamelength = (int) strchr((char*) start, ' ') - start; //length of the first word post space 
+                printf("username to send to %.*s\n", usernamelength, (char*) start); //print out the word
+
+                start += usernamelength + 1; //add the usernamelength + the space to get the address of the first char past the space
+                int messagelength = t->buffer_length - start - (int) buffer-2; //get the remaining buffer size (start includes the buffer address)
+                printf("message to send %.*s\n", messagelength, (char*) start);
+
+
             } else {
                 snprintf(t->line, 1024, ":myserver.com 241 %s :PRIVMSG command sent before registration\n", t->nickname);
                 write(t->fd, t->line, strlen(t->line));
             }
-        } else if (strncasecmp("NICK", (char*) t->buffer, 4) == 0) {
+        } else if (strncasecmp("NICK", buffer, 4) == 0) {
             /*
                         if (t->mode == 0) {
                             snprintf(t->line, 1024, ":myserver.com 241 * :NICK command sent before password (PASS *)\n");
                             write(t->fd, t->line, strlen(t->line));
                         }
              */
-            t->mode += 2;
+            t->mode = 2;
+            t->timeout = NICK_TIMEOUT;
             // copy the nickname off the buffer to the client_thread struct
             t->nicknamelength = t->buffer_length - 7;
-            memcpy(t->nickname, &t->buffer[5], t->nicknamelength);
+            memcpy(t->nickname, t->buffer + 5, t->nicknamelength);
 
-        } else if (strncasecmp("USER", (char*) t->buffer, 4) == 0) {
+        } else if (strncasecmp("USER", buffer, 4) == 0) {
             if (t->mode == 2) {
-                t->mode++;
+                t->mode = 3;
+                t->timeout = REG_TIMEOUT;
                 // @todo check username in unique ... add to list
                 // copy the nickname off the buffer to the client_thread struct
                 t->usernamelength = t->buffer_length - 7;
-                memcpy(t->username, &t->buffer[5], t->usernamelength);
-
+                memcpy(t->username, t->buffer + 5, t->usernamelength);
                 //send welcome messages
                 snprintf(t->line, 1024, ":myserver.com 001 %s :Welcome to the Internet Relay Network %s!~%s@client.myserver.com\n", t->nickname, t->nickname, t->username);
-                //printf("lineout :%s\n", t->line);
                 write(t->fd, t->line, strlen(t->line));
                 snprintf(t->line, 1024, ":myserver.com 002 %s :Your host is myserver.com, running version 1.0\n", t->nickname);
                 write(t->fd, t->line, strlen(t->line));
@@ -364,9 +416,10 @@ int connection_main(struct client_thread* t) {
                 write(t->fd, t->line, strlen(t->line));
             }
             // already set user name ... do nothing
-        } else if (strncasecmp("PASS", (char*) t->buffer, 4) == 0) {
+        } else if (strncasecmp("PASS", buffer, 4) == 0) {
             if (t->mode == 0) {
                 t->mode++;
+                t->timeout = 30;
                 // there is no password ... continue
             }
             // already logged in ... do nothing        
@@ -374,6 +427,7 @@ int connection_main(struct client_thread* t) {
             printf("some other message received: %s", t->buffer);
             //@todo handle message
         }
+
     }
 
     // unreachable but here anyway
@@ -389,7 +443,7 @@ int connection_main(struct client_thread* t) {
 void* client_thread_entry(void * arg) {
     struct client_thread *t = arg;
 
-    t->state = ALIVE; // mark it as alive ? ... doesn't really matter        
+    t->state = ALIVE; // mark it as alive ? ... doesn't really matter 
     connection_main(t); // interact with the thread
     t->state = DEAD; // mark it as dead ? ... doesn't really matter   
     push_stack(t->thread_id); // push the thread id back onto the available thread ids stack
@@ -454,9 +508,9 @@ int main(int argc, char **argv) {
         if (client_sock != -1) {
             handle_connection(client_sock);
         }
-        // close(client_sock);
+        //close(client_sock);        
     }
-    
+
     //destroy the available thread stack lock
     pthread_rwlock_destroy(&aval_thread_stack_lock);
 
