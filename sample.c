@@ -1,10 +1,50 @@
 /*
-  Sample solution for NOS 2014 assignment: implement a simple multi-threaded 
+  Solution for NOS 2014 assignment: implement a simple multi-threaded 
   IRC-like chat service.
-
-  (C) Paul Gardner-Stephen and Samuel Deane 2014.
+ 
+  (C) Samuel Deane and Paul Gardner-Stephen 2014.
   
-  contains sections directly taken from test.c, (C) Paul Gardner-Stephen 
+ * main code path:
+ * Main ... Populates the id stack (populate_stack), listens for connections 
+ *          (create_listen_socket), accepts incoming connections 
+ *          (accept_incoming) and if accepted calls handle_connection
+ * handle_connection ... Gets an unused thread id(trypop_stack()) and creates a 
+ *                       thread of that id based on the client_thread struct.  
+ *                       The thread on creation calls client_thread_entry
+ * client_thread_entry ... Declares the thread alive and calls connection_main
+ * connection_main ... Handles the requests of the client by reading off the 
+ *                     socket (read_from_socket), performing operations such as
+ *                     logging-in, connection timeouts and messages handling. 
+ *                     Which it does by getting the recipient client thread
+ *                     (et_client_thread_by_nickname) and writing to its message
+ *                     buffer and setting its has_message to 1. The recipient 
+ *                     thread knowing it has a message, sends out the message in 
+ *                     its own time (undefined for multiple simultaneous 
+ *                     messages).
+ *                     On a QUIT message or timeout closes the connection.
+ * client_thread_entry ... Declares the thread dead
+ * handle_connection ... Places the id back onto the stack (push_stack)for reuse 
+ * Main ... Closes the listening socket
+  
+ * problems, possible issues, limitations etc. 
+ * - Does not handle global messages
+ * - Multiple threads sending private messages to a single thread at the same 
+ *   time is undefined as the current system relies on each thread having its own
+ *   unsynchronised message buffer with a delayed write output.
+ * - Legitimate joins are not handled 
+ * - Recipient clients are found through iterating over an array (avg O(n/2)) 
+ *   whereas a synchronised hashtable will have better performance (avg O(1)).
+ *   the thread_client is of a set size and will thus be wasteful
+ * - No check is performed to see if a clients nickname is unique
+ * - Private messages not preceeded by a pong have an extra byte than expected.
+ *   So a hack is used to set the method length to 1 less on such a condition
+ * - Commenting is deliberately excessive for demonstration of understanding
+ 
+ * Features
+ * - Uses a stack to hold available client thread ids
+ * - Passes all tests of test.c 
+ 
+  Contains sections directly taken from test.c, (C) Paul Gardner-Stephen 
   made available under the GNU General Public License.
  
   This program is free software; you can redistribute it and/or
@@ -23,6 +63,7 @@
 
  */
 
+//IRC references
 //http://www.anta.net/misc/telnet-troubleshooting/irc.shtml
 
 #include <stdio.h>
@@ -61,10 +102,10 @@ struct client_thread {
     // 0 unregistered
     // 1 password supplied // skipped here?
     // 2 nickname supplied
-    // 3 username supplied ... registered
+    // 3 username supplied == registered
     int mode;
 
-    // the timeout length of the structure ... not required yet all are 5seconds
+    // the timeout length of the structure
     time_t timeout;
 
     char line[1024];
@@ -81,18 +122,18 @@ struct client_thread {
 //defines the maximum client threads
 #define MAX_CLIENTS 100
 
-//define the dead and alive thread states ... no longer relied on
+//define the dead and alive thread states ... no longer relied on and some timeouts
 #define DEAD 1
 #define ALIVE 2
 #define REG_TIMEOUT 120
-#define NICK_TIMEOUT 30
+#define NICK_TIMEOUT 30 //else 5
 
 // create an array of client threads
 struct client_thread threads[MAX_CLIENTS];
 
 // a stack to hold the unused threads
 int aval_thread_stack[MAX_CLIENTS];
-int aval_thread_stack_size = 0; // also the connection count
+int aval_thread_stack_size = 0; // also the connection count as MAX_CLIENTS-aval_thread_stack_size
 
 // a lock for the shared thread stack
 pthread_rwlock_t aval_thread_stack_lock;
@@ -109,12 +150,13 @@ int reg_users = 0; //not used will make atomic
  * @param count, pointer to the length of the buffer 
  * @param buffer_size, the total size or space avaliable for the buffer
  * @param timeout, the amount of time the socket can be read whilst idle
+ * @param has_next_message, pointer used to stop the read as it has a write to perform 
+ * (probably would give better performance is handled here but would mean re-writing the give function ... so no)
  * @return 0 if data is returned to the buffer otherwise -1 as a read error occured
- */ //t->fd, t->buffer, &t->buffer_length, 8192, t->timeout, t->has_next_message
-
+ */
 int read_from_socket(int sock, unsigned char *buffer, int *count, int buffer_size, int timeout, int* has_next_message) {
 
-    //set the socket flags to true if they already are or if not blocking i.e. set flags to non blocking 
+    //set the socket flags to non blocking 
     fcntl(sock, F_SETFL, fcntl(sock, F_GETFL, NULL) | O_NONBLOCK);
 
     int t = time(0) + timeout; // set the timeout time (timeout seconds from now)
@@ -125,7 +167,7 @@ int read_from_socket(int sock, unsigned char *buffer, int *count, int buffer_siz
     // else read and continue reading from the socket until data is found
     int r = read(sock, &buffer[*count], buffer_size - *count);
     //address of the 0th elem in the array buffer
-    while (r != 0) {
+    while (r != 0) { // while no data continue to try and read
         if (r > 0) {
             (*count) += r;
             break;
@@ -200,8 +242,8 @@ int create_listen_socket(int port) {
 }
 
 /**
- * Try to accept an in coming socket
- * @param sock the socket to try to accept
+ * Try to accept an incoming socket
+ * @param sock, the socket to try to accept
  * @return file descriptor of the accepted socket or -1 if an error occurred
  */
 int accept_incoming(int sock) {
@@ -211,17 +253,21 @@ int accept_incoming(int sock) {
     if ((asock = accept(sock, &addr, &addr_len)) != -1) {
         return asock;
     }
-
     return -1;
 }
 
-struct client_thread* get_client_thread_by_nickname(char* nickname, int nicknamelength, int threadid) {
-    //printf("this thread has nickname %s\n", (&threads[threadid + 1])->nickname);
+/**
+ * find which thread structure the nickname belongs to
+ * @param nickname, a nickname of the user to find
+ * @param nicknamelength, the length of the nickname (speeds up searching)
+ * @return a pointer to the client thread or NULL if not found
+ */
+struct client_thread* get_client_thread_by_nickname(char* nickname, int nicknamelength) {
 
     int i;
     for (i = 0; i < MAX_CLIENTS; i++) {
         struct client_thread *t = &threads[i];
-        if (t->state == ALIVE) {
+        if (t->mode == 3) {//only check registered threads
             //printf("ALIVETHREAD username %s with tlen %d and want %.*s with unlen %d\n", t->username, t->usernamelength, usernamelength, username, usernamelength);
             if (t->nicknamelength == nicknamelength) {
                 if (strncmp(nickname, (char *) t->nickname, t->nicknamelength) == 0) {
@@ -275,32 +321,11 @@ int push_stack(int thread_id) {
     return 0;
 }
 
-/*
-void handleBadState(int fd, char line[], int state, int expectedState) {
-    if (state == 1) {
-        snprintf(line, 1024, ":myserver.com 241 * :USER command sent before password (PASS *)\n");
-    } else if (state == 0) {
-        snprintf(line, 1024, ":myserver.com 241 * :USER command sent before password (PASS *) and nickname (NICK aNickName)\n");
-    }
-    write(fd, line, strlen(line));
-}
- */
-
-/*
-int possComLength = (int) strchr(buffer, ' ');
-if (possComLength != 0) {
-    possComLength += 1 - (int) &buffer[0];
-    //printf("the length is %d\n",possComLength);   
-    //printf("the command is %.*s\n", possComLength, buffer);
-}
- */
-
 /**
  * Handle the client thread connections request messages and responses 
  * @param t the client thread structure to handle
  * @return 0 the close of a connection
  */
-
 int connection_main(struct client_thread* t) {
     //printf("I have now seen %d connections so far.\n",++connection_count);
 
@@ -309,24 +334,12 @@ int connection_main(struct client_thread* t) {
     snprintf(t->username, 1024, "*");
     t->nicknamelength = 1;
     t->usernamelength = 1;
-    t->mode = 0; // make sure the mode (is set to unregistered no PASS, NICK or USER)
+    t->mode = 1; // make sure the mode (is set to unregistered  NICK or USER) ... pass is ignored ... so 1
     t->timeout = 5; // give 5 seconds to live
-    t->has_next_message = 0; //make sure there are no messages to be sent yet
+    t->has_next_message = 0; //make sure there are no messages to be sent yet ... probably not required
 
-    snprintf(t->line, 28, ":myserver.com 020 * :hello\n\r"); // wright output message to the line
+    snprintf(t->line, 28, ":myserver.com 020 * :hello\n\r"); // write output message to the line
     write(t->fd, t->line, strlen(t->line)); // write the line to the file descriptor
-    /*
-     * // old pre-threaded stuff
-        int state = 0;
-        unsigned char nickname[32];
-        int nicknamelength = 0;
-        unsigned char username[32];
-        int usernamelength = 0;
-        memset(t->nickname, '\0', 32);
-        memset(t->username, '\0', 32);
-        t->nickname[0] = '*';
-        t->username[0] = '*';
-     */
 
     while (1) {
         //printf(" fd for id %d is %d\n", t->thread_id, t->fd);
@@ -337,7 +350,7 @@ int connection_main(struct client_thread* t) {
         char * buffer = (char*) t->buffer;
         int bufferlength = t->buffer_length;
 
-        if (t->has_next_message == 1) {
+        if (t->has_next_message) {
             write(t->fd, t->message, strlen(t->message));
             t->has_next_message = 0;
             //printf("reply printed '%.*s'\n", strlen(t->message), t->message);
@@ -368,7 +381,7 @@ int connection_main(struct client_thread* t) {
             } else { // adjust for any pong
                 buffer = buffer + 6;
                 bufferlength -= 6;
-                //printf("post Pong is: %s", buffer);
+                //... continue to process
             }
             //keep alive message received ... do nothing
         }
@@ -377,27 +390,27 @@ int connection_main(struct client_thread* t) {
                 //@todo handle legit join here
                 // of form JOIN #twilight_zone
             } else {
-                snprintf(t->line, 1024, ":myserver.com 241 %s :JOIN command sent before registration\n", t->nickname);
+                snprintf(t->line, 1024, ":myserver.com 241 %s :JOIN command sent before registration\n\r", t->nickname);
                 write(t->fd, t->line, strlen(t->line));
             }
         } else if (strncasecmp("PRIVMSG", buffer, 7) == 0) {
             if (t->mode == 3) {
 
-                //printf("buffer is %s", t->buffer);
                 int unstart = (int) buffer + 7 + 1; // address + 8
-                int nicknamelength = (int) strchr((char*) unstart, ' ') - unstart; //length of the first word post space 
-                //printf("username to send to %.*s, length is %d\n", nicknamelength, (char*) unstart, nicknamelength); //print out the word                
+                int nicknamelength = (int) strchr((char*) unstart, ' ') - unstart; //length of the first word post space
 
                 int mstart = unstart + nicknamelength + 1 + 1; //skip over the username, a space and the colon
                 int messagelength = bufferlength - nicknamelength - 12; //get the remaining buffer size (start includes the buffer address)
-                //printf("message to send %.*s, length is %d\n", messagelength, (char*) mstart, messagelength);
+                /*
+                                printf("buffer is %s\n\
+                nickname to send to %.*s, length is %d\n\
+                message to send %.*s, length is %d\n"
+                                        , (char*) buffer
+                                        , nicknamelength, (char*) unstart, nicknamelength
+                                        , messagelength, (char*) mstart, messagelength);
+                 */
 
-                //if (strncmp((char*) unstart, t->nickname, nicknamelength)) {
-                //    snprintf(t->line, 1024, ":myserver.com PRIVMSG %s :%.*s :aa\n", t->nickname, messagelength, (char*) mstart);
-                //    write(t->fd, t->line, strlen(t->line));
-                //} else {
-
-                struct client_thread* ct = get_client_thread_by_nickname((char*) unstart, nicknamelength, t->thread_id);
+                struct client_thread* ct = get_client_thread_by_nickname((char*) unstart, nicknamelength);
                 if (ct == NULL) {
                     //printf("got null?\n");
                     snprintf(t->line, 1024, ":myserver.com 241 %s :PRIVMSG unknown username %.*s \n\r", t->nickname, nicknamelength, (char*) unstart);
@@ -408,15 +421,13 @@ int connection_main(struct client_thread* t) {
                     snprintf(ct->message, messagelength, ":myserver.com PRIVMSG %s :%s\n\r", ct->nickname, (char*) mstart);
                     ct->messagelength = messagelength; // copy its length                    
                     ct->has_next_message = 1; //say it has to send a message
-                    //printf("k3\n");
                 }
-                //}
-            } else {
+            } else { // not a registered user
                 snprintf(t->line, 1024, ":myserver.com 241 %s :PRIVMSG command sent before registration\n\r", t->nickname);
                 write(t->fd, t->line, strlen(t->line));
             }
         } else if (strncasecmp("NICK", buffer, 4) == 0) {
-            /*
+            /* // not required? as no PASS message
                         if (t->mode == 0) {
                             snprintf(t->line, 1024, ":myserver.com 241 * :NICK command sent before password (PASS *)\n");
                             write(t->fd, t->line, strlen(t->line));
@@ -455,16 +466,13 @@ int connection_main(struct client_thread* t) {
                         , t->nickname
                         );
                 write(t->fd, t->line, strlen(t->line));
-
-                // :MyNickname MODE MyNickname :+i also?                
-            } else if (t->mode == 1) {
-                snprintf(t->line, 1024, ":myserver.com 241 * :USER command sent before password (PASS *)\n\r");
+            } else if (t->mode == 1) { // password set but not nickname
+                snprintf(t->line, 1024, ":myserver.com 241 * :USER command sent before nickname (NICK aNickName)\n\r");
                 write(t->fd, t->line, strlen(t->line));
-            } else if (t->mode == 0) {
+            } else if (t->mode == 0) { // password set but not nickname
                 snprintf(t->line, 1024, ":myserver.com 241 * :USER command sent before password (PASS *) and nickname (NICK aNickName)\n\r");
                 write(t->fd, t->line, strlen(t->line));
             }
-            // already set user name ... do nothing
         } else if (strncasecmp("PASS", buffer, 4) == 0) {
             if (t->mode == 0) {
                 t->mode++;
@@ -474,14 +482,12 @@ int connection_main(struct client_thread* t) {
             // already logged in ... do nothing        
         } else {
             printf("some other message received: %s", t->buffer);
-            //@todo handle message
+            //@todo handle unknown message
         }
-
     }
-
+    
     // unreachable but here anyway
     close(t->fd);
-
     return 0;
 }
 
@@ -532,8 +538,10 @@ int handle_connection(int fd) {
 }
 
 int main(int argc, char **argv) {
-    signal(SIGPIPE, SIG_IGN);
+    // ignore sigpipe errors such as writing to a closed pipe
+    signal(SIGPIPE, SIG_IGN); 
 
+    // check that has 2 and only two input arguments
     if (argc != 2) {
         fprintf(stderr, "usage: sample <tcp port>\n");
         exit(-1);
