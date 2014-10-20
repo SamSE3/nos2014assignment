@@ -8,22 +8,23 @@
  * Main ... Populates the id stack (populate_stack), listens for connections 
  *          (create_listen_socket), accepts incoming connections 
  *          (accept_incoming) and if accepted calls handle_connection
- * handle_connection ... Gets an unused thread id(trypop_stack()) and creates a 
+ * handle_connection ... Gets an unused thread id(trypop_stack) and creates a 
  *                       thread of that id based on the client_thread struct.  
  *                       The thread on creation calls client_thread_entry
  * client_thread_entry ... Declares the thread alive and calls connection_main
  * connection_main ... Handles the requests of the client by reading off the 
  *                     socket (read_from_socket), performing operations such as
- *                     logging-in, connection timeouts and messages handling. 
- *                     Which it does by getting the recipient client thread
- *                     (et_client_thread_by_nickname) and writing to its message
- *                     buffer and setting its has_message to 1. The recipient 
- *                     thread knowing it has a message, sends out the message in 
- *                     its own time (undefined for multiple simultaneous 
- *                     messages).
- *                     On a QUIT message or timeout closes the connection.
+ *                     logging-in, sending messages, joining groups and handling
+ *                     message timeouts. Which it does by getting the recipient 
+ *                     client thread (et_client_thread_by_nickname) and writing 
+ *                     to its message buffer and setting its has_message to 
+ *                     1. The recipient thread knowing it has a message, sends 
+ *                     out the message in its own time, though currently this 
+ *                     process is undefined for multiple simultaneous messages 
+ *                     as the buffer could be overwritten before the message is 
+ *                     sent. On a QUIT message or timeout closes the connection.
  * client_thread_entry ... Declares the thread dead
- * handle_connection ... Places the id back onto the stack (push_stack)for reuse 
+ * handle_connection ... Places the id back onto the stack (push_stack) for reuse 
  * Main ... Closes the listening socket
   
  * problems, possible issues, limitations etc. 
@@ -31,6 +32,7 @@
  * - Multiple threads sending private messages to a single thread at the same 
  *   time is undefined as the current system relies on each thread having its own
  *   unsynchronised message buffer with a delayed write output.
+ *      this can be solved by implementing a linked list of messages
  * - Legitimate joins are not handled 
  * - Recipient clients are found through iterating over an array (avg O(n/2)) 
  *   whereas a synchronised hashtable will have better performance (avg O(1)).
@@ -84,6 +86,15 @@
 #include <ctype.h>
 
 /**
+ * a structure for each message node, 
+ */
+struct node {
+  char message[1024];
+  int messagelength;
+  struct node *n1ext;
+};
+
+/**
  * a structure for each thread
  */
 struct client_thread {
@@ -117,12 +128,19 @@ struct client_thread {
     int has_next_message;
     int messagelength;
     char message[1024];
+    struct node *first_message_node;
+    struct node *next_message_node; // pointer to the next message node to add
+    pthread_rwlock_t next_message_node_lock; // can only add one message to the linked
+    // list at one time, perhaps create a thread to wait if locked? so it dosen't
+    // hold up the thread that sent the message.
+    // non blocking i/o does not wait on a blocked thread
+    
 };
 
 //defines the maximum client threads
 #define MAX_CLIENTS 100
 
-//define the dead and alive thread states ... no longer relied on and some timeouts
+//define the dead and alive thread states (no longer relied on) and some timeouts
 #define DEAD 1
 #define ALIVE 2
 #define REG_TIMEOUT 120
@@ -565,6 +583,8 @@ int main(int argc, char **argv) {
         // if there is a connection ... handle it
         if (client_sock != -1) {
             handle_connection(client_sock);
+        } else {
+            usleep(10000);   
         }
         //close(client_sock);        
     }
